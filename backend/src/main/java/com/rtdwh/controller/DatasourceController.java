@@ -39,9 +39,10 @@ public class DatasourceController {
     @PutMapping("/{id}")
     public ApiResponse<DatasourceConfig> updateDatasource(@PathVariable Long id, @RequestBody DatasourceConfig config) {
         DatasourceConfig existing = datasourceService.getDatasource(id);
-        config.setId(existing.getId());
         // Preserve encrypted password if not changed
-        if (config.getPasswordEncrypted() != null && !config.getPasswordEncrypted().equals(existing.getPasswordEncrypted())) {
+        if (config.getPasswordEncrypted() != null
+                && !config.getPasswordEncrypted().isBlank()
+                && !config.getPasswordEncrypted().equals(existing.getPasswordEncrypted())) {
             config.setPasswordEncrypted(encryptionUtil.encrypt(config.getPasswordEncrypted()));
         } else {
             config.setPasswordEncrypted(existing.getPasswordEncrypted());

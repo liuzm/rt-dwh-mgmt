@@ -7,6 +7,9 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.sql.*;
+import java.time.DateTimeException;
+import java.time.ZoneId;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -81,7 +84,10 @@ public class CdcTableIntrospector {
                 }
             }
 
-            return new TableSchema(tableName, columns, primaryKeys);
+            String serverTimeZone = config.getDbType() == DatasourceConfig.DbType.mysql
+                    ? detectMySqlServerTimeZone(conn)
+                    : null;
+            return new TableSchema(tableName, columns, primaryKeys, serverTimeZone);
         } catch (SQLException e) {
             log.error("Failed to introspect table {} from datasource {}: {}", tableName, config.getId(), e.getMessage());
             throw new RuntimeException("获取表结构失败: " + e.getMessage());
@@ -100,11 +106,53 @@ public class CdcTableIntrospector {
         };
     }
 
+    private String detectMySqlServerTimeZone(Connection connection) throws SQLException {
+        String sql = "SELECT @@session.time_zone, @@system_time_zone, "
+                + "TIMESTAMPDIFF(SECOND, UTC_TIMESTAMP(), NOW())";
+        try (Statement statement = connection.createStatement();
+             ResultSet result = statement.executeQuery(sql)) {
+            if (!result.next()) {
+                throw new SQLException("MySQL 时区查询未返回结果");
+            }
+            return resolveMySqlServerTimeZone(
+                    result.getString(1),
+                    result.getString(2),
+                    result.getInt(3));
+        }
+    }
+
+    static String resolveMySqlServerTimeZone(String sessionTimeZone,
+                                             String systemTimeZone,
+                                             int offsetSeconds) {
+        String session = normalizeZoneId(sessionTimeZone);
+        if (session != null && !"SYSTEM".equalsIgnoreCase(session)) {
+            return session;
+        }
+        String system = normalizeZoneId(systemTimeZone);
+        if (system != null) {
+            return system;
+        }
+        return offsetSeconds == 0 ? "UTC" : ZoneOffset.ofTotalSeconds(offsetSeconds).getId();
+    }
+
+    private static String normalizeZoneId(String value) {
+        if (value == null || value.isBlank()) return null;
+        String candidate = value.trim();
+        if ("SYSTEM".equalsIgnoreCase(candidate)) return candidate;
+        try {
+            ZoneId.of(candidate);
+            return candidate;
+        } catch (DateTimeException ignored) {
+            return null;
+        }
+    }
+
     // ========================================================================
     // Inner classes for table schema
     // ========================================================================
 
-    public record TableSchema(String tableName, List<ColumnSchema> columns, List<String> primaryKeys) {}
+    public record TableSchema(String tableName, List<ColumnSchema> columns,
+                              List<String> primaryKeys, String serverTimeZone) {}
 
     public record ColumnSchema(
             String name,

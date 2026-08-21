@@ -2,8 +2,14 @@ package com.rtdwh.controller;
 
 import com.rtdwh.dto.ApiResponse;
 import com.rtdwh.dto.QueryExecuteDTO;
+import com.rtdwh.dto.QueryCatalogDTO;
+import com.rtdwh.dto.SavedQueryUpsertDTO;
 import com.rtdwh.entity.QueryHistory;
+import com.rtdwh.entity.SavedQuery;
+import com.rtdwh.service.DwhMetaService;
 import com.rtdwh.service.QueryService;
+import com.rtdwh.service.ReportService;
+import com.rtdwh.service.SavedQueryService;
 import com.rtdwh.util.SecurityContextUtil;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -11,6 +17,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -23,6 +30,9 @@ import java.util.Map;
 public class QueryController {
 
     private final QueryService queryService;
+    private final ReportService reportService;
+    private final DwhMetaService dwhMetaService;
+    private final SavedQueryService savedQueryService;
     private final SecurityContextUtil securityContextUtil;
 
     /**
@@ -39,14 +49,13 @@ public class QueryController {
      * Export query results to CSV.
      */
     @PostMapping("/export")
-    public ApiResponse<String> exportQuery(@Valid @RequestBody QueryExecuteDTO dto) {
+    public ResponseEntity<byte[]> exportQuery(@Valid @RequestBody QueryExecuteDTO dto) {
         Long userId = securityContextUtil.getCurrentUserId();
-        try {
-            String csv = queryService.exportToCsv(dto, userId);
-            return ApiResponse.success(csv);
-        } catch (RuntimeException e) {
-            return ApiResponse.error(400, e.getMessage());
-        }
+        byte[] csv = queryService.exportToCsv(dto, userId).getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=query-result.csv")
+                .contentType(MediaType.parseMediaType("text/csv;charset=UTF-8"))
+                .body(csv);
     }
 
     /**
@@ -54,7 +63,15 @@ public class QueryController {
      */
     @PostMapping("/cancel/{historyId}")
     public ApiResponse<Void> cancelQuery(@PathVariable Long historyId) {
-        queryService.cancelQuery(historyId);
+        Long userId = securityContextUtil.getCurrentUserId();
+        queryService.cancelQuery(historyId, userId);
+        return ApiResponse.success("查询已取消", null);
+    }
+
+    @PostMapping("/cancel-request/{requestId}")
+    public ApiResponse<Void> cancelQueryByRequestId(@PathVariable String requestId) {
+        Long userId = securityContextUtil.getCurrentUserId();
+        queryService.cancelQueryByRequestId(requestId, userId);
         return ApiResponse.success("查询已取消", null);
     }
 
@@ -69,6 +86,35 @@ public class QueryController {
         return ApiResponse.success(queryService.getQueryHistoryPage(userId, page, size));
     }
 
+    @GetMapping("/catalog")
+    public ApiResponse<QueryCatalogDTO> getCatalog() {
+        return ApiResponse.success(dwhMetaService.getQueryCatalog());
+    }
+
+    @GetMapping("/saved")
+    public ApiResponse<List<SavedQuery>> listSavedQueries() {
+        return ApiResponse.success(savedQueryService.list(securityContextUtil.getCurrentUserId()));
+    }
+
+    @PostMapping("/saved")
+    public ApiResponse<SavedQuery> createSavedQuery(@Valid @RequestBody SavedQueryUpsertDTO dto) {
+        return ApiResponse.success("SQL 已保存到服务端",
+                savedQueryService.create(securityContextUtil.getCurrentUserId(), dto));
+    }
+
+    @PutMapping("/saved/{id}")
+    public ApiResponse<SavedQuery> updateSavedQuery(@PathVariable Long id,
+                                                    @Valid @RequestBody SavedQueryUpsertDTO dto) {
+        return ApiResponse.success("SQL 已更新",
+                savedQueryService.update(id, securityContextUtil.getCurrentUserId(), dto));
+    }
+
+    @DeleteMapping("/saved/{id}")
+    public ApiResponse<Void> deleteSavedQuery(@PathVariable Long id) {
+        savedQueryService.delete(id, securityContextUtil.getCurrentUserId());
+        return ApiResponse.success("SQL 已删除", null);
+    }
+
     /**
      * Execute a report query using the report's SQL template.
      */
@@ -77,8 +123,12 @@ public class QueryController {
             @PathVariable Long reportId,
             @RequestBody(required = false) Map<String, Object> params) {
         Long userId = securityContextUtil.getCurrentUserId();
-        // TODO: Fetch report template SQL from DB and execute
-        // For now, return a placeholder
-        return ApiResponse.error(501, "报告查询功能待接入");
+        com.rtdwh.entity.ReportTemplate report = reportService.getReport(reportId);
+        if (!Boolean.TRUE.equals(report.getIsPublished())) {
+            throw new IllegalStateException("报告尚未发布，无法查询");
+        }
+        // Report filters are deliberately not concatenated into SQL. Templates must
+        // contain safe, read-only SQL; parameter binding can be added per connector.
+        return ApiResponse.success(queryService.executeReportQuery(report.getSqlQuery(), userId));
     }
 }

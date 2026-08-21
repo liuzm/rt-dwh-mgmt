@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   # MySQL - 管理库元数据存储
   mysql:
@@ -48,33 +46,80 @@ services:
 
   # Flink JobManager
   flink-jobmanager:
-    image: flink:1.19.1-java17
+    build:
+      context: ./flink
+      dockerfile: Dockerfile
+    image: rtdwh-flink:2.2.1
     container_name: rtdwh-flink-jobmanager
     ports:
       - "8081:8081"
     command: jobmanager
     environment:
-      - FLINK_PROPERTIES=jobmanager.rpc.address:flink-jobmanager
+      FLINK_PROPERTIES: |
+        jobmanager.rpc.address: flink-jobmanager
+        execution.checkpointing.dir: file:///tmp/flink-checkpoints
+        execution.checkpointing.savepoint-dir: file:///tmp/flink-savepoints
     volumes:
       - flink_data:/opt/flink/data
+      - paimon_data:/data/paimon
+      - savepoint_data:/tmp/flink-savepoints
     restart: unless-stopped
     networks:
       - rtdwh-backend
 
   # Flink TaskManager
   flink-taskmanager:
-    image: flink:1.19.1-java17
-    container_name: rtdwh-flink-taskmanager
+    build:
+      context: ./flink
+      dockerfile: Dockerfile
+    image: rtdwh-flink:2.2.1
     depends_on:
       - flink-jobmanager
     command: taskmanager
     environment:
-      - FLINK_PROPERTIES=jobmanager.rpc.address:flink-jobmanager
-      - FLINK_PROPERTIES=taskmanager.numberOfTaskSlots:4
+      FLINK_PROPERTIES: |
+        jobmanager.rpc.address: flink-jobmanager
+        taskmanager.numberOfTaskSlots: 4
+        execution.checkpointing.dir: file:///tmp/flink-checkpoints
+        execution.checkpointing.savepoint-dir: file:///tmp/flink-savepoints
     volumes:
       - flink_data:/opt/flink/data
+      - paimon_data:/data/paimon
+      - savepoint_data:/tmp/flink-savepoints
     deploy:
       replicas: 2
+    restart: unless-stopped
+    networks:
+      - rtdwh-backend
+
+  # Flink SQL Gateway - executes generated CDC/Paimon SQL scripts
+  flink-sql-gateway:
+    build:
+      context: ./flink
+      dockerfile: Dockerfile
+    image: rtdwh-flink:2.2.1
+    container_name: rtdwh-flink-sql-gateway
+    depends_on:
+      - flink-jobmanager
+    command:
+      - /opt/flink/bin/sql-gateway.sh
+      - start-foreground
+      - -Dsql-gateway.endpoint.rest.bind-address=0.0.0.0
+      - -Dsql-gateway.endpoint.rest.address=flink-sql-gateway
+      - -Dsql-gateway.endpoint.rest.port=8083
+      - -Drest.address=flink-jobmanager
+      - -Drest.port=8081
+    ports:
+      - "127.0.0.1:9083:8083"
+    environment:
+      FLINK_PROPERTIES: |
+        jobmanager.rpc.address: flink-jobmanager
+        rest.address: flink-jobmanager
+        rest.port: 8081
+        table.dml-sync: false
+    volumes:
+      - paimon_data:/data/paimon
+      - savepoint_data:/tmp/flink-savepoints
     restart: unless-stopped
     networks:
       - rtdwh-backend
@@ -92,12 +137,22 @@ services:
       - DB_USERNAME=${DB_USERNAME:-rtdwh_admin}
       - FLINK_REST_URL=http://flink-jobmanager:8081
       - FLINK_JAR_PATH=/opt/flink/usrlib
-      - FLINK_SAVEPOINT_DIR=/tmp/flink-savepoints
+      - FLINK_SAVEPOINT_DIR=file:///tmp/flink-savepoints
+      - SQL_GATEWAY_ENABLED=true
+      - SQL_GATEWAY_URL=http://flink-sql-gateway:8083
       - PAIMON_WAREHOUSE=/data/paimon
+      - PAIMON_JDBC_URI=jdbc:mysql://mysql:3306/rtdwh_paimon_meta?useUnicode=true&characterEncoding=utf8&useSSL=false&serverTimezone=Asia/Shanghai
+      - PAIMON_JDBC_USER=${PAIMON_JDBC_USER:-rtdwh_admin}
       - PAIMON_JDBC_PASSWORD=${PAIMON_JDBC_PASSWORD:-}
       - JWT_SECRET=${JWT_SECRET:-}
       - ENCRYPTION_KEY=${ENCRYPTION_KEY:-}
       - INIT_USERS_ENABLED=${INIT_USERS_ENABLED:-false}
+      - INIT_ADMIN_PASSWORD=${INIT_ADMIN_PASSWORD:-}
+      - INIT_DEV_PASSWORD=${INIT_DEV_PASSWORD:-}
+      - INIT_GUEST_PASSWORD=${INIT_GUEST_PASSWORD:-}
+      - HEALTH_MONITOR_ENABLED=${HEALTH_MONITOR_ENABLED:-true}
+      - HEALTH_MONITOR_INTERVAL_MS=${HEALTH_MONITOR_INTERVAL_MS:-60000}
+      - HEALTH_MONITOR_INITIAL_DELAY_MS=${HEALTH_MONITOR_INITIAL_DELAY_MS:-5000}
       - MAIL_HOST=${MAIL_HOST:-}
       - DINGTALK_WEBHOOK=${DINGTALK_WEBHOOK:-}
       - WECOM_WEBHOOK=${WECOM_WEBHOOK:-}
@@ -105,6 +160,11 @@ services:
     depends_on:
       mysql:
         condition: service_healthy
+      flink-sql-gateway:
+        condition: service_started
+    volumes:
+      - paimon_data:/data/paimon
+      - savepoint_data:/tmp/flink-savepoints
     restart: unless-stopped
     networks:
       - rtdwh-backend
@@ -112,13 +172,13 @@ services:
 
   # Nginx Reverse Proxy (Frontend + Backend)
   rtdwh-nginx:
-    image: nginx:alpine
+    build:
+      context: ..
+      dockerfile: frontend/Dockerfile
     container_name: rtdwh-nginx
     ports:
       - "80:80"
       - "443:443"
-    volumes:
-      - ../deploy/nginx.conf:/etc/nginx/conf.d/default.conf:ro
     depends_on:
       - rtdwh-backend
     restart: unless-stopped
@@ -162,6 +222,8 @@ volumes:
   mysql_data:
   pg_data:
   flink_data:
+  paimon_data:
+  savepoint_data:
   prometheus_data:
   grafana_data:
 

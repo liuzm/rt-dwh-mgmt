@@ -23,6 +23,13 @@ backend:
     FLINK_REST_URL: "http://flink-jobmanager:8081"
     JWT_SECRET: "rtdwh-management-platform-secret-key-2026"
     PAIMON_WAREHOUSE: "/data/paimon"
+    HEALTH_MONITOR_ENABLED: "true"
+    HEALTH_MONITOR_INTERVAL_MS: "60000"
+    HEALTH_MONITOR_INITIAL_DELAY_MS: "5000"
+    INIT_USERS_ENABLED: "false"
+    INIT_ADMIN_PASSWORD: ""
+    INIT_DEV_PASSWORD: ""
+    INIT_GUEST_PASSWORD: ""
 
 # Frontend Configuration
 frontend:

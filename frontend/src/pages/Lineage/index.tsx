@@ -42,8 +42,8 @@ const Lineage: React.FC = () => {
   const { data: tasksData } = useRequest(getSyncTasks);
   const { data: tablesData } = useRequest(getDwhTables);
 
-  const tasks = tasksData || [];
-  const tables = tablesData || [];
+  const tasks = (tasksData || []) as API.SyncTask[];
+  const tables = (tablesData || []) as API.DwhTableMeta[];
 
   // Build DAG from real data
   const nodes: DAGNode[] = [];

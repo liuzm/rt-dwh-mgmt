@@ -39,12 +39,11 @@ public class ReportController {
     @GetMapping("/{id}/data")
     public ApiResponse<Map<String, Object>> getReportData(@PathVariable Long id) {
         ReportTemplate report = reportService.getReport(id);
+        if (!Boolean.TRUE.equals(report.getIsPublished())) {
+            throw new IllegalStateException("报告尚未发布，无法查询");
+        }
 
-        com.rtdwh.dto.QueryExecuteDTO queryDTO = new com.rtdwh.dto.QueryExecuteDTO();
-        queryDTO.setSql(report.getSqlQuery());
-        queryDTO.setMaxRows(1000);
-
-        Map<String, Object> result = queryService.executeQuery(queryDTO, securityContextUtil.getCurrentUserId());
+        Map<String, Object> result = queryService.executeReportQuery(report.getSqlQuery(), securityContextUtil.getCurrentUserId());
         return ApiResponse.success(result);
     }
 

@@ -123,10 +123,15 @@ declare namespace API {
   interface QueryResult {
     columns: string[];
     rows: any[][];
-    rowCount: number;
-    durationMs: number;
-    status: 'success' | 'failed';
+    totalRows?: number;
+    rowCount?: number;
+    executionTime?: number;
+    durationMs?: number;
+    status?: 'running' | 'success' | 'failed' | 'cancelled' | string;
     errorMsg?: string;
+    historyId?: number;
+    requestId?: string;
+    truncated?: boolean;
   }
 
   interface TaskStatusInfo {
@@ -149,30 +154,22 @@ declare namespace API {
   interface AlertRule {
     id: number;
     ruleName: string;
-    targetType: 'sync_task' | 'table' | 'quality';
-    targetName: string;
-    metric: string;
-    condition: string;
-    threshold: number;
-    unit: string;
-    alertLevel: 'low' | 'medium' | 'high';
-    channels: string[];
+    ruleType: string;
+    expression?: string;
+    notifyChannel?: string;
     enabled: boolean;
-    lastTriggeredAt?: string;
-    triggerCount: number;
+    createdAt: string;
+    updatedAt: string;
   }
 
   interface AlertRecord {
     id: number;
-    ruleName: string;
-    targetName: string;
-    alertLevel: 'low' | 'medium' | 'high';
-    message: string;
-    channels: string[];
-    notifiedAt: string;
+    ruleType: string;
+    message?: string;
+    level?: string;
     resolved: boolean;
     resolvedAt?: string;
-    resolver?: string;
+    triggeredAt?: string;
   }
 
   interface QualityRule {

@@ -14,6 +14,7 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.*;
 
@@ -37,12 +38,21 @@ public class AuthController {
      */
     @PostMapping("/login")
     public ApiResponse<LoginResponse> login(@Valid @RequestBody LoginRequest request) {
-        // 1. 加载用户
-        UserDetails userDetails = userDetailsService.loadUserByUsername(request.getUsername());
+        // Do not expose whether a username exists. Both missing users and bad
+        // passwords are authentication failures (401), not server errors.
+        final UserDetails userDetails;
+        try {
+            userDetails = userDetailsService.loadUserByUsername(request.getUsername());
+        } catch (UsernameNotFoundException e) {
+            return ApiResponse.error(401, "用户名或密码错误");
+        }
 
         // 2. 校验密码
         if (!passwordEncoder.matches(request.getPassword(), userDetails.getPassword())) {
-            return ApiResponse.error("用户名或密码错误");
+            return ApiResponse.error(401, "用户名或密码错误");
+        }
+        if (!userDetails.isEnabled()) {
+            return ApiResponse.error(403, "用户已被禁用");
         }
 
         // 3. 生成 JWT

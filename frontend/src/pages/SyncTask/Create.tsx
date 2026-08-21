@@ -88,6 +88,8 @@ const SyncTaskCreate: React.FC = () => {
         taskName: formData.taskName,
         taskType: formData.taskType,
         syncStrategy: formData.syncStrategy,
+        sourceConfigId: formData.sourceConfigId,
+        targetConfigId: formData.targetConfigId,
         tableMappings: JSON.stringify(formData.tableMappings),
       });
       setSqlPreview(result?.sql || '');
@@ -172,14 +174,20 @@ const SyncTaskCreate: React.FC = () => {
 
   const handleCreate = async () => {
     try {
+      if (!formData.taskName?.trim()) return message.warning('请输入任务名称');
+      if (!formData.sourceConfigId || !formData.targetConfigId) return message.warning('请选择源数据源和目标数据源');
+      if (formData.taskType === 'cdc_sync' && formData.tableMappings.length === 0) return message.warning('请至少添加一张表映射');
+      if (!formData.flinkSql?.trim()) return message.warning('请生成或填写 Flink SQL');
       const payload = {
         taskName: formData.taskName,
         taskType: formData.taskType,
         sourceConfigId: formData.sourceConfigId,
-        targetConfigId: formData.targetConfigId || 0,
+        targetConfigId: formData.targetConfigId,
         flinkSql: formData.flinkSql,
         syncStrategy: formData.syncStrategy,
         tableMappings: JSON.stringify(formData.tableMappings),
+        parallelism: 1,
+        checkpointIntervalMs: 60000,
       };
       const createdTask = await createSyncTask(payload);
       message.success('同步任务创建成功');
@@ -262,6 +270,8 @@ const SyncTaskCreate: React.FC = () => {
                   syncMode: 'full+incremental',
                 }));
                 setFormData((d: any) => ({ ...d, tableMappings: mappings }));
+                if (values.length > 0) handleSourceTableSelect(values[0]);
+                else setSourceColumns([]);
               }}
               options={sourceTables.map((t) => ({ label: t, value: t }))}
             />

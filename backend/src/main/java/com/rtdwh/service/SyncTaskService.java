@@ -12,7 +12,6 @@ import com.rtdwh.dto.SyncTaskUpdateDTO;
 import com.rtdwh.repository.SyncTaskRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -20,6 +19,7 @@ import java.time.LocalDateTime;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 @Slf4j
 @Service
@@ -33,24 +33,50 @@ public class SyncTaskService {
     private final DatasourceService datasourceService;
     private final ObjectMapper objectMapper;
 
-    @Value("${flink.sql-gateway.enabled:false}")
-    private boolean sqlGatewayEnabled;
-
     // ========================================================================
     // CRUD Operations
     // ========================================================================
 
     @Transactional
     public SyncTask createTask(SyncTaskCreateDTO dto, Long creatorId) {
+        TaskType taskType;
+        SyncStrategy syncStrategy;
+        try {
+            taskType = TaskType.valueOf(dto.getTaskType());
+            syncStrategy = SyncStrategy.valueOf(dto.getSyncStrategy());
+        } catch (Exception e) {
+            throw new IllegalArgumentException("任务类型或同步策略不合法");
+        }
+        if (Objects.equals(dto.getSourceConfigId(), dto.getTargetConfigId())) {
+            throw new IllegalArgumentException("源数据源和目标数据源不能相同");
+        }
+        DatasourceConfig source = datasourceService.getDatasource(dto.getSourceConfigId());
+        DatasourceConfig target = datasourceService.getDatasource(dto.getTargetConfigId());
+        if (taskType == TaskType.cdc_sync) {
+            if (source.getDbType() != DatasourceConfig.DbType.mysql && source.getDbType() != DatasourceConfig.DbType.postgresql) {
+                throw new IllegalArgumentException("CDC 源数据源只支持 MySQL 或 PostgreSQL");
+            }
+            if (target.getDbType() != DatasourceConfig.DbType.paimon) {
+                throw new IllegalArgumentException("CDC 目标数据源必须是 Paimon");
+            }
+            if (dto.getTableMappings() == null || dto.getTableMappings().isBlank() || !dto.getTableMappings().trim().startsWith("[")) {
+                throw new IllegalArgumentException("CDC 任务必须配置表映射");
+            }
+            try {
+                if (!objectMapper.readTree(dto.getTableMappings()).isArray()) throw new IllegalArgumentException("表映射必须是数组");
+            } catch (JsonProcessingException e) {
+                throw new IllegalArgumentException("表映射 JSON 格式不正确", e);
+            }
+        }
         SyncTask task = SyncTask.builder()
                 .creatorId(creatorId)
                 .taskName(dto.getTaskName())
                 .description(dto.getDescription())
-                .taskType(TaskType.valueOf(dto.getTaskType()))
+                .taskType(taskType)
                 .sourceConfigId(dto.getSourceConfigId())
                 .targetConfigId(dto.getTargetConfigId())
                 .flinkSql(dto.getFlinkSql())
-                .syncStrategy(SyncStrategy.valueOf(dto.getSyncStrategy()))
+                .syncStrategy(syncStrategy)
                 .tableMappings(dto.getTableMappings())
                 .parallelism(dto.getParallelism() != null ? dto.getParallelism() : 1)
                 .checkpointIntervalMs(dto.getCheckpointIntervalMs() != null ? dto.getCheckpointIntervalMs() : 60000L)
@@ -129,11 +155,12 @@ public class SyncTaskService {
         // Transition to submitting (intermediate state)
         task.setStatus(TaskStatus.submitting);
         task.setLastErrorMsg(null);
+        task.setSubmittedAt(LocalDateTime.now());
         syncTaskRepository.save(task);
 
         try {
             // Generate CDC SQL dynamically before submission
-            if (task.getTaskType() == TaskType.cdc_sync) {
+        if (task.getTaskType() == TaskType.cdc_sync) {
                 try {
                     DatasourceConfig sourceConfig = datasourceService.getDatasource(task.getSourceConfigId());
                     DatasourceConfig targetConfig = datasourceService.getDatasource(task.getTargetConfigId());
@@ -150,11 +177,14 @@ public class SyncTaskService {
             Map<String, Object> submitResult;
 
             // Choose submission method based on configuration
-            if (sqlGatewayEnabled && task.getTaskType() != TaskType.cdc_sync) {
-                // ETL and materialized tables can use SQL Gateway
+            if (flinkClusterService.isSqlGatewayEnabled()) {
+                // All task types in this platform are represented as Flink SQL.
+                // CDC must also use SQL Gateway; the generated CDC SQL is not an
+                // executable user JAR and cannot be submitted through /jars/{id}/run.
                 submitResult = flinkClusterService.submitViaSqlGateway(task);
             } else {
-                // CDC sync always uses jar-based submission
+                // Compatibility fallback for deployments that provide their own
+                // executable job runner JAR.
                 submitResult = flinkClusterService.submitJob(task);
             }
 
@@ -200,13 +230,14 @@ public class SyncTaskService {
 
         // Transition to submitting
         task.setStatus(TaskStatus.submitting);
+        task.setSubmittedAt(LocalDateTime.now());
         syncTaskRepository.save(task);
 
         try {
             Map<String, Object> submitResult;
 
-            if (sqlGatewayEnabled && task.getTaskType() != TaskType.cdc_sync) {
-                submitResult = flinkClusterService.submitViaSqlGateway(task);
+            if (flinkClusterService.isSqlGatewayEnabled()) {
+                submitResult = flinkClusterService.submitViaSqlGateway(task, savepointPath);
             } else {
                 submitResult = flinkClusterService.submitFromSavepoint(task, savepointPath);
             }
@@ -422,6 +453,11 @@ public class SyncTaskService {
                 Map<String, Object> flinkStatus = flinkClusterService.getJobStatus(task.getFlinkJobId());
                 String flinkState = (String) flinkStatus.get("flinkState");
 
+                if (flinkState == null || "UNREACHABLE".equals(flinkStatus.get("status"))) {
+                    log.debug("Flink status unavailable for task [{}], keeping current state", task.getTaskName());
+                    continue;
+                }
+
                 syncedCount++;
 
                 // Handle Flink state changes
@@ -495,10 +531,11 @@ public class SyncTaskService {
 
     private void handleFlinkJobCompletion(SyncTask task, String flinkState) {
         // Flink job finished or was canceled externally
+        TaskStatus previousStatus = task.getStatus();
         task.setStatus(TaskStatus.finished);
         task.setSavepointTriggerId(null);
 
-        if ("CANCELED".equals(flinkState) && task.getStatus() != TaskStatus.saving_point) {
+        if ("CANCELED".equals(flinkState) && previousStatus != TaskStatus.saving_point) {
             task.setLastErrorMsg("Flink Job 被外部取消");
         }
 
@@ -507,8 +544,8 @@ public class SyncTaskService {
     }
 
     private void updateRunningTaskMetrics(SyncTask task, Map<String, Object> flinkStatus) {
-        Long lagMs = (Long) flinkStatus.getOrDefault("lagMs", 0L);
-        Double throughputQps = (Double) flinkStatus.getOrDefault("throughputQps", 0.0);
+        Long lagMs = ((Number) flinkStatus.getOrDefault("lagMs", 0L)).longValue();
+        Double throughputQps = ((Number) flinkStatus.getOrDefault("throughputQps", 0.0)).doubleValue();
 
         task.setCurrentLagMs(lagMs);
         task.setThroughputQps(throughputQps);
@@ -516,8 +553,8 @@ public class SyncTaskService {
         // Update checkpoint info
         Map<String, Object> checkpointInfo = (Map<String, Object>) flinkStatus.get("checkpointInfo");
         if (checkpointInfo != null) {
-            Long count = (Long) checkpointInfo.getOrDefault("completedCount", 0L);
-            Long lastTs = (Long) checkpointInfo.getOrDefault("lastCompletedTimestamp", 0L);
+            Long count = ((Number) checkpointInfo.getOrDefault("completedCount", 0L)).longValue();
+            Long lastTs = ((Number) checkpointInfo.getOrDefault("lastCompletedTimestamp", 0L)).longValue();
 
             task.setCheckpointCount(count);
             if (lastTs > 0) {

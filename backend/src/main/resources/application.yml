@@ -83,17 +83,24 @@ flink:
   submission:
     mode: application  # application | session
     jar-path: ${FLINK_JAR_PATH:/opt/flink/lib}
-    savepoint-dir: ${FLINK_SAVEPOINT_DIR:/tmp/flink-savepoints}
+    savepoint-dir: ${FLINK_SAVEPOINT_DIR:file:///tmp/flink-savepoints}
   sql-gateway:
-    enabled: ${SQL_GATEWAY_ENABLED:false}
+    enabled: ${SQL_GATEWAY_ENABLED:true}
     url: ${SQL_GATEWAY_URL:http://localhost:9083}
   status-monitor:
     enabled: true
     interval-seconds: 30  # Poll every 30 seconds
 
+# Persisted dependency health snapshot
+health:
+  monitor:
+    enabled: ${HEALTH_MONITOR_ENABLED:true}
+    interval-ms: ${HEALTH_MONITOR_INTERVAL_MS:60000}
+    initial-delay-ms: ${HEALTH_MONITOR_INITIAL_DELAY_MS:5000}
+
 # Paimon Configuration — MySQL JDBC Metastore
 paimon:
-  warehouse-path: ${PAIMON_WAREHOUSE:/data/paimon}
+  warehouse-path: ${PAIMON_WAREHOUSE:${user.home}/rtdwh-data/paimon}
   metastore: jdbc
   jdbc-uri: ${PAIMON_JDBC_URI:jdbc:mysql://localhost:3306/rtdwh_paimon_meta}
   jdbc-user: ${PAIMON_JDBC_USER:root}
@@ -119,9 +126,9 @@ alert:
 
 # CDC Configuration
 cdc:
-  flink-cdc-version: ${FLINK_CDC_VERSION:3.3.0}
+  flink-cdc-version: ${FLINK_CDC_VERSION:3.6.0-2.2}
   debezium-version: ${DEBEZIUM_VERSION:2.5.0}
-  paimon-version: ${PAIMON_VERSION:1.1.0}
+  paimon-version: ${PAIMON_VERSION:2.0.0}
   default-start-mode: ${CDC_START_MODE:initial}  # initial | incremental
 
 # Logging
@@ -146,7 +153,7 @@ management:
 # App Initialization (disabled in production)
 app:
   init-users:
-    enabled: ${INIT_USERS_ENABLED:false}
-    admin-password: ${INIT_ADMIN_PASSWORD:}
-    dev-password: ${INIT_DEV_PASSWORD:}
-    guest-password: ${INIT_GUEST_PASSWORD:}
+    enabled: ${INIT_USERS_ENABLED:true}
+    admin-password: ${INIT_ADMIN_PASSWORD:admin123}
+    dev-password: ${INIT_DEV_PASSWORD:dev}
+    guest-password: ${INIT_GUEST_PASSWORD:guest}

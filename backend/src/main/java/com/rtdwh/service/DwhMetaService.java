@@ -2,6 +2,8 @@ package com.rtdwh.service;
 
 import com.rtdwh.entity.DwhColumnMeta;
 import com.rtdwh.entity.DwhTableMeta;
+import com.rtdwh.dto.DwhSnapshotDTO;
+import com.rtdwh.dto.QueryCatalogDTO;
 import com.rtdwh.entity.DwhTableMeta.TableLayer;
 import com.rtdwh.entity.TableMaintenanceLog;
 import com.rtdwh.entity.TableMaintenanceLog.Operation;
@@ -19,6 +21,13 @@ import org.springframework.web.client.RestTemplate;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import java.sql.*;
+import java.io.IOException;
+import java.net.URI;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.time.Instant;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -70,6 +79,31 @@ public class DwhMetaService {
         return columnMetaRepository.findByTableMetaIdOrderBySortOrder(tableMetaId);
     }
 
+    @Transactional(readOnly = true)
+    public QueryCatalogDTO getQueryCatalog() {
+        Map<String, List<QueryCatalogDTO.TableInfo>> grouped = new TreeMap<>();
+        for (DwhTableMeta table : tableMetaRepository.findAll()) {
+            List<QueryCatalogDTO.ColumnInfo> columns = getTableColumns(table.getId()).stream()
+                    .map(column -> new QueryCatalogDTO.ColumnInfo(
+                            column.getColumnName(),
+                            column.getColumnType(),
+                            Boolean.TRUE.equals(column.getIsPk()),
+                            Boolean.TRUE.equals(column.getIsNullable())))
+                    .toList();
+            grouped.computeIfAbsent(table.getPaimonDb(), ignored -> new ArrayList<>())
+                    .add(new QueryCatalogDTO.TableInfo(
+                            table.getPaimonTable(), table.getLayer().name(), columns));
+        }
+        List<QueryCatalogDTO.DatabaseInfo> databases = grouped.entrySet().stream()
+                .map(entry -> new QueryCatalogDTO.DatabaseInfo(
+                        entry.getKey(),
+                        entry.getValue().stream()
+                                .sorted(Comparator.comparing(QueryCatalogDTO.TableInfo::name))
+                                .toList()))
+                .toList();
+        return new QueryCatalogDTO("paimon", paimonCatalogKey, databases);
+    }
+
     @Transactional
     public DwhTableMeta updateBusinessDesc(Long id, String businessDesc) {
         DwhTableMeta table = getTableDetail(id);
@@ -108,6 +142,10 @@ public class DwhMetaService {
         int syncedCount = 0;
 
         try (Connection conn = DriverManager.getConnection(paimonJdbcUri, paimonJdbcUser, paimonJdbcPassword)) {
+            if (tableExists(conn, "paimon_tables")) {
+                return syncPaimonUnifiedMetastore(conn);
+            }
+
             // Step 1: Get all databases from Paimon metastore
             String dbTable = "paimon_catalog_" + paimonCatalogKey + "_database";
             List<String> databases = new ArrayList<>();
@@ -198,6 +236,223 @@ public class DwhMetaService {
         }
 
         return syncedCount;
+    }
+
+    /** Sync Paimon 2.x JDBC catalog metadata. */
+    private int syncPaimonUnifiedMetastore(Connection conn) throws SQLException {
+        List<String[]> catalogTables = new ArrayList<>();
+        try (PreparedStatement ps = conn.prepareStatement(
+                "SELECT `database_name`, `table_name` FROM `paimon_tables` "
+                        + "WHERE `catalog_key` = ? ORDER BY `database_name`, `table_name`")) {
+            ps.setString(1, paimonCatalogKey);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    catalogTables.add(new String[]{rs.getString(1), rs.getString(2)});
+                }
+            }
+        }
+
+        Set<String> activeTables = new HashSet<>();
+        for (String[] catalogTable : catalogTables) {
+            String database = catalogTable[0];
+            String tableName = catalogTable[1];
+            activeTables.add(database + "." + tableName);
+
+            DwhTableMeta tableMeta = tableMetaRepository
+                    .findByPaimonDbAndPaimonTable(database, tableName)
+                    .orElseGet(DwhTableMeta::new);
+            tableMeta.setPaimonDb(database);
+            tableMeta.setPaimonTable(tableName);
+            tableMeta.setLayer(inferLayer(database));
+
+            Map<String, String> properties = loadUnifiedTableProperties(conn, database, tableName);
+            if (!properties.isEmpty()) {
+                tableMeta.setPrimaryKeys(properties.getOrDefault("primary-key", ""));
+                tableMeta.setPartitionKeys(properties.getOrDefault("partition", ""));
+                try {
+                    parseSnapshotMetrics(tableMeta, objectMapper.writeValueAsString(properties));
+                } catch (Exception e) {
+                    log.debug("Unable to serialize Paimon properties for {}.{}", database, tableName);
+                }
+            }
+
+            enrichTableFromWarehouse(tableMeta);
+            DwhTableMeta saved = tableMetaRepository.save(tableMeta);
+            upsertColumns(conn, null, database, tableName, saved, saved.getSchemaJson());
+        }
+
+        removeStaleUnifiedTables(activeTables);
+        log.info("Paimon 2.x metadata sync completed. {} tables processed.", catalogTables.size());
+        return catalogTables.size();
+    }
+
+    private Map<String, String> loadUnifiedTableProperties(Connection conn, String database,
+                                                            String tableName) throws SQLException {
+        Map<String, String> properties = new LinkedHashMap<>();
+        if (!tableExists(conn, "paimon_table_properties")) return properties;
+        try (PreparedStatement ps = conn.prepareStatement(
+                "SELECT `property_key`, `property_value` FROM `paimon_table_properties` "
+                        + "WHERE `catalog_key` = ? AND `database_name` = ? AND `table_name` = ?")) {
+            ps.setString(1, paimonCatalogKey);
+            ps.setString(2, database);
+            ps.setString(3, tableName);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) properties.put(rs.getString(1), rs.getString(2));
+            }
+        }
+        return properties;
+    }
+
+    private boolean tableExists(Connection conn, String tableName) throws SQLException {
+        try (ResultSet rs = conn.getMetaData().getTables(conn.getCatalog(), null, tableName,
+                new String[]{"TABLE"})) {
+            return rs.next();
+        }
+    }
+
+    private void enrichTableFromWarehouse(DwhTableMeta tableMeta) {
+        Optional<Path> tablePath = resolveLocalTablePath(tableMeta);
+        if (tablePath.isEmpty()) {
+            log.debug("Warehouse is not a local filesystem path; skipping file enrichment for {}.{}",
+                    tableMeta.getPaimonDb(), tableMeta.getPaimonTable());
+            return;
+        }
+        Path root = tablePath.get();
+        try {
+            latestNumberedFile(root.resolve("schema"), "schema-").ifPresent(schemaFile -> {
+                try {
+                    var schema = objectMapper.readTree(schemaFile.toFile());
+                    tableMeta.setSchemaJson(schema.toString());
+                    tableMeta.setPartitionKeys(joinJsonArray(schema.path("partitionKeys")));
+                    tableMeta.setPrimaryKeys(joinJsonArray(schema.path("primaryKeys")));
+                    String comment = schema.path("comment").asText("").trim();
+                    if ((tableMeta.getBusinessDesc() == null || tableMeta.getBusinessDesc().isBlank())
+                            && !comment.isBlank()) {
+                        tableMeta.setBusinessDesc(comment);
+                    }
+                } catch (IOException e) {
+                    log.warn("Failed to read Paimon schema {}: {}", schemaFile, e.getMessage());
+                }
+            });
+
+            List<DwhSnapshotDTO> snapshots = readSnapshots(root);
+            tableMeta.setSnapshotCount(snapshots.size());
+            if (!snapshots.isEmpty()) {
+                DwhSnapshotDTO latest = snapshots.get(0);
+                tableMeta.setLatestSnapshotId(latest.snapshotId());
+                tableMeta.setLatestCommitTime(latest.commitTime());
+                tableMeta.setRecordCount(latest.recordCount());
+            } else {
+                tableMeta.setLatestSnapshotId(null);
+                tableMeta.setLatestCommitTime(null);
+                tableMeta.setRecordCount(0L);
+            }
+
+            long fileCount = 0;
+            long totalSize = 0;
+            if (Files.isDirectory(root)) {
+                try (var paths = Files.walk(root)) {
+                    for (Path path : paths.filter(Files::isRegularFile).toList()) {
+                        String name = path.getFileName().toString();
+                        if (name.startsWith("data-") || name.startsWith("changelog-")) {
+                            fileCount++;
+                            totalSize += Files.size(path);
+                        }
+                    }
+                }
+            }
+            tableMeta.setFileCount(Math.toIntExact(Math.min(fileCount, Integer.MAX_VALUE)));
+            tableMeta.setTotalSizeBytes(totalSize);
+        } catch (IOException e) {
+            log.warn("Failed to inspect Paimon warehouse table {}: {}", root, e.getMessage());
+        }
+    }
+
+    public List<DwhSnapshotDTO> getTableSnapshots(Long tableMetaId) {
+        DwhTableMeta table = getTableDetail(tableMetaId);
+        return resolveLocalTablePath(table).map(this::readSnapshots).orElseGet(List::of);
+    }
+
+    private List<DwhSnapshotDTO> readSnapshots(Path tablePath) {
+        Path snapshotDir = tablePath.resolve("snapshot");
+        if (!Files.isDirectory(snapshotDir)) return List.of();
+        List<DwhSnapshotDTO> result = new ArrayList<>();
+        try (var paths = Files.list(snapshotDir)) {
+            for (Path file : paths.filter(Files::isRegularFile)
+                    .filter(path -> path.getFileName().toString().matches("snapshot-\\d+"))
+                    .toList()) {
+                try {
+                    var node = objectMapper.readTree(file.toFile());
+                    long timeMillis = node.path("timeMillis").asLong(0);
+                    LocalDateTime commitTime = timeMillis > 0
+                            ? LocalDateTime.ofInstant(Instant.ofEpochMilli(timeMillis), ZoneId.systemDefault())
+                            : null;
+                    result.add(new DwhSnapshotDTO(
+                            node.path("id").asLong(),
+                            node.path("schemaId").asLong(),
+                            node.path("commitKind").asText("UNKNOWN"),
+                            commitTime,
+                            node.path("totalRecordCount").asLong(),
+                            node.path("deltaRecordCount").asLong(),
+                            node.path("baseManifestListSize").asLong()
+                                    + node.path("deltaManifestListSize").asLong()));
+                } catch (IOException e) {
+                    log.debug("Skip unreadable snapshot {}: {}", file, e.getMessage());
+                }
+            }
+        } catch (IOException e) {
+            log.warn("Failed to list snapshots in {}: {}", snapshotDir, e.getMessage());
+        }
+        result.sort(Comparator.comparingLong(DwhSnapshotDTO::snapshotId).reversed());
+        return result;
+    }
+
+    private Optional<Path> resolveLocalTablePath(DwhTableMeta table) {
+        try {
+            String location = paimonWarehousePath.trim();
+            URI uri = URI.create(location);
+            if (uri.getScheme() != null && !"file".equalsIgnoreCase(uri.getScheme())) {
+                return Optional.empty();
+            }
+            Path warehouse = uri.getScheme() == null ? Path.of(location) : Path.of(uri);
+            Path normalizedWarehouse = warehouse.toAbsolutePath().normalize();
+            Path tablePath = normalizedWarehouse
+                    .resolve(table.getPaimonDb() + ".db")
+                    .resolve(table.getPaimonTable())
+                    .normalize();
+            return tablePath.startsWith(normalizedWarehouse) ? Optional.of(tablePath) : Optional.empty();
+        } catch (Exception e) {
+            log.debug("Unsupported warehouse path {}: {}", paimonWarehousePath, e.getMessage());
+            return Optional.empty();
+        }
+    }
+
+    private Optional<Path> latestNumberedFile(Path directory, String prefix) throws IOException {
+        if (!Files.isDirectory(directory)) return Optional.empty();
+        try (var paths = Files.list(directory)) {
+            return paths.filter(Files::isRegularFile)
+                    .filter(path -> path.getFileName().toString().matches(prefix + "\\d+"))
+                    .max(Comparator.comparingLong(path -> Long.parseLong(
+                            path.getFileName().toString().substring(prefix.length()))));
+        }
+    }
+
+    private String joinJsonArray(com.fasterxml.jackson.databind.JsonNode node) {
+        if (!node.isArray()) return "";
+        List<String> values = new ArrayList<>();
+        node.forEach(value -> values.add(value.asText()));
+        return String.join(",", values);
+    }
+
+    private void removeStaleUnifiedTables(Set<String> activeTables) {
+        for (DwhTableMeta existing : tableMetaRepository.findAll()) {
+            String key = existing.getPaimonDb() + "." + existing.getPaimonTable();
+            if (!activeTables.contains(key)) {
+                columnMetaRepository.deleteAll(
+                        columnMetaRepository.findByTableMetaIdOrderBySortOrder(existing.getId()));
+                tableMetaRepository.delete(existing);
+            }
+        }
     }
 
     /**
@@ -302,26 +557,28 @@ public class DwhMetaService {
         List<DwhColumnMeta> newColumns = new ArrayList<>();
         boolean fromMetastore = false;
 
-        try (PreparedStatement ps = conn.prepareStatement(
-                "SELECT `column_name`, `column_type`, `comment`, `is_nullable`, `is_primary_key`, `default_value`, `sort_order` FROM " + colMetaTable + " WHERE `database_name` = ? AND `table_name` = ? ORDER BY `sort_order`")) {
-            ps.setString(1, db);
-            ps.setString(2, tableName);
-            try (ResultSet rs = ps.executeQuery()) {
-                while (rs.next()) {
-                    DwhColumnMeta col = new DwhColumnMeta();
-                    col.setColumnName(rs.getString("column_name"));
-                    col.setColumnType(rs.getString("column_type"));
-                    col.setBusinessComment(rs.getString("comment"));
-                    col.setIsNullable(parseBooleanSafe(rs.getString("is_nullable"), true));
-                    col.setIsPk(parseBooleanSafe(rs.getString("is_primary_key"), false));
-                    col.setDefaultValue(rs.getString("default_value"));
-                    col.setSortOrder(rs.getInt("sort_order"));
-                    newColumns.add(col);
-                    fromMetastore = true;
+        if (colMetaTable != null) {
+            try (PreparedStatement ps = conn.prepareStatement(
+                    "SELECT `column_name`, `column_type`, `comment`, `is_nullable`, `is_primary_key`, `default_value`, `sort_order` FROM " + colMetaTable + " WHERE `database_name` = ? AND `table_name` = ? ORDER BY `sort_order`")) {
+                ps.setString(1, db);
+                ps.setString(2, tableName);
+                try (ResultSet rs = ps.executeQuery()) {
+                    while (rs.next()) {
+                        DwhColumnMeta col = new DwhColumnMeta();
+                        col.setColumnName(rs.getString("column_name"));
+                        col.setColumnType(rs.getString("column_type"));
+                        col.setBusinessComment(rs.getString("comment"));
+                        col.setIsNullable(parseBooleanSafe(rs.getString("is_nullable"), true));
+                        col.setIsPk(parseBooleanSafe(rs.getString("is_primary_key"), false));
+                        col.setDefaultValue(rs.getString("default_value"));
+                        col.setSortOrder(rs.getInt("sort_order"));
+                        newColumns.add(col);
+                        fromMetastore = true;
+                    }
                 }
+            } catch (SQLException e) {
+                log.debug("Paimon column metastore query failed for {}.{}: {}", db, tableName, e.getMessage());
             }
-        } catch (SQLException e) {
-            log.debug("Paimon column metastore query failed for {}.{}: {}", db, tableName, e.getMessage());
         }
 
         // Fallback: parse columns from schema JSON
@@ -336,12 +593,20 @@ public class DwhMetaService {
         Long tableMetaId = saved.getId();
 
         // Delete existing columns and re-insert (full replace strategy)
-        if (tableMetaId != null) {
-            List<DwhColumnMeta> existing = columnMetaRepository.findByTableMetaIdOrderBySortOrder(tableMetaId);
-            columnMetaRepository.deleteAll(existing);
-        }
+        List<DwhColumnMeta> existing = tableMetaId == null ? List.of()
+                : columnMetaRepository.findByTableMetaIdOrderBySortOrder(tableMetaId);
+        Map<String, DwhColumnMeta> existingByName = existing.stream().collect(Collectors.toMap(
+                DwhColumnMeta::getColumnName, column -> column, (left, right) -> left));
+        columnMetaRepository.deleteAll(existing);
 
         for (DwhColumnMeta col : newColumns) {
+            DwhColumnMeta previous = existingByName.get(col.getColumnName());
+            if (previous != null) {
+                if (col.getBusinessComment() == null || col.getBusinessComment().isBlank()) {
+                    col.setBusinessComment(previous.getBusinessComment());
+                }
+                col.setSourceColumn(previous.getSourceColumn());
+            }
             col.setTableMetaId(tableMetaId);
             columnMetaRepository.save(col);
         }
@@ -351,7 +616,7 @@ public class DwhMetaService {
      * Parse columns from Paimon schema JSON.
      * Paimon schema JSON format: [{"name":"col1","type":"INT","comment":"desc","nullable":true}, ...]
      */
-    private List<DwhColumnMeta> parseColumnsFromSchemaJson(String schemaJson, String primaryKeys) {
+    List<DwhColumnMeta> parseColumnsFromSchemaJson(String schemaJson, String primaryKeys) {
         List<DwhColumnMeta> columns = new ArrayList<>();
         Set<String> pkSet = new HashSet<>();
         if (primaryKeys != null && !primaryKeys.isEmpty()) {
@@ -362,18 +627,21 @@ public class DwhMetaService {
 
         try {
             com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
-            @SuppressWarnings("unchecked")
-            List<Map<String, Object>> fields = mapper.readValue(schemaJson, List.class);
+            com.fasterxml.jackson.databind.JsonNode root = mapper.readTree(schemaJson);
+            com.fasterxml.jackson.databind.JsonNode fieldsNode = root.isArray() ? root : root.path("fields");
+            if (!fieldsNode.isArray()) return columns;
 
             int sortOrder = 0;
-            for (Map<String, Object> field : fields) {
+            for (com.fasterxml.jackson.databind.JsonNode field : fieldsNode) {
                 DwhColumnMeta col = new DwhColumnMeta();
-                col.setColumnName((String) field.get("name"));
-                col.setColumnType(field.get("type") != null ? String.valueOf(field.get("type")) : "STRING");
-                col.setBusinessComment((String) field.get("comment"));
-                col.setIsNullable(field.containsKey("nullable") ? parseBooleanSafe(String.valueOf(field.get("nullable")), true) : true);
+                col.setColumnName(field.path("name").asText());
+                String rawType = field.path("type").asText("STRING");
+                boolean notNull = rawType.toUpperCase(Locale.ROOT).endsWith(" NOT NULL");
+                col.setColumnType(rawType.replaceFirst("(?i)\\s+NOT NULL$", ""));
+                col.setBusinessComment(field.path("comment").asText(null));
+                col.setIsNullable(field.has("nullable") ? field.path("nullable").asBoolean(true) : !notNull);
                 col.setIsPk(pkSet.contains(col.getColumnName()));
-                col.setDefaultValue(field.get("default") != null ? String.valueOf(field.get("default")) : null);
+                col.setDefaultValue(field.hasNonNull("default") ? field.path("default").asText() : null);
                 col.setSortOrder(sortOrder++);
                 columns.add(col);
             }
@@ -520,6 +788,53 @@ public class DwhMetaService {
         logEntry.setOperationId((String) result.get("operationId"));
         maintenanceLogRepository.save(logEntry);
 
+        return result;
+    }
+
+    /** Trigger compaction for all matching tables. Individual failures do not stop the batch. */
+    public Map<String, Object> batchCompact(TableLayer layer, int fileCountThreshold) {
+        List<DwhTableMeta> candidates = listTables(layer, null, null).stream()
+                .filter(table -> table.getFileCount() != null && table.getFileCount() >= fileCountThreshold)
+                .toList();
+        return runBatchMaintenance(candidates, table -> triggerCompact(table.getId(), "minor"));
+    }
+
+    /** Trigger snapshot expiration for all tables in the selected layer. */
+    public Map<String, Object> batchExpireSnapshots(TableLayer layer, int retainLast) {
+        return runBatchMaintenance(
+                listTables(layer, null, null),
+                table -> triggerExpireSnapshots(table.getId(), retainLast));
+    }
+
+    /** Trigger orphan-file cleanup for one table, or for all tables when the id is omitted. */
+    public Map<String, Object> batchOrphanCleanup(Long tableMetaId) {
+        List<DwhTableMeta> candidates = tableMetaId == null
+                ? listTables(null, null, null)
+                : List.of(getTableDetail(tableMetaId));
+        return runBatchMaintenance(candidates, table -> triggerOrphanCleanup(table.getId()));
+    }
+
+    private Map<String, Object> runBatchMaintenance(
+            List<DwhTableMeta> tables,
+            java.util.function.Function<DwhTableMeta, Map<String, Object>> operation) {
+        int triggered = 0;
+        List<Map<String, Object>> failures = new ArrayList<>();
+        for (DwhTableMeta table : tables) {
+            try {
+                operation.apply(table);
+                triggered++;
+            } catch (RuntimeException exception) {
+                failures.add(Map.of(
+                        "tableId", table.getId(),
+                        "table", table.getPaimonDb() + "." + table.getPaimonTable(),
+                        "message", exception.getMessage() == null ? "操作失败" : exception.getMessage()
+                ));
+            }
+        }
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("triggered", triggered);
+        result.put("failed", failures.size());
+        result.put("failures", failures);
         return result;
     }
 

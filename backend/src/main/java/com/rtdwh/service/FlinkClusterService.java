@@ -11,9 +11,16 @@ import org.springframework.http.*;
 import org.springframework.stereotype.Service;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
+import org.springframework.web.client.RestClientResponseException;
 import org.springframework.web.client.RestTemplate;
 
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.nio.file.Path;
 import java.time.Duration;
+import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.*;
 
@@ -21,6 +28,10 @@ import java.util.*;
 @Service
 @RequiredArgsConstructor
 public class FlinkClusterService {
+
+    private static final HttpClient FLINK_CANCEL_CLIENT = HttpClient.newBuilder()
+            .connectTimeout(Duration.ofSeconds(5))
+            .build();
 
     @Value("${flink.rest-api.url}")
     private String flinkRestUrl;
@@ -34,7 +45,7 @@ public class FlinkClusterService {
     @Value("${flink.submission.jar-path:/opt/flink/lib}")
     private String jarPath;
 
-    @Value("${flink.submission.savepoint-dir:/tmp/flink-savepoints}")
+    @Value("${flink.submission.savepoint-dir:file:///tmp/flink-savepoints}")
     private String savepointDir;
 
     @Value("${flink.sql-gateway.enabled:false}")
@@ -50,6 +61,30 @@ public class FlinkClusterService {
     public RestTemplate getRestTemplate() { return restTemplate; }
     public ObjectMapper getObjectMapper() { return objectMapper; }
     public String getFlinkRestUrl() { return flinkRestUrl; }
+    public String getSubmissionMode() { return submissionMode; }
+    public String getSavepointDir() { return savepointDir; }
+    public boolean isSqlGatewayEnabled() { return sqlGatewayEnabled; }
+    public String getSqlGatewayUrl() { return sqlGatewayUrl; }
+
+    /** Update the active runtime connection used by subsequent Flink operations. */
+    public void updateRuntimeConfig(String restUrl, String mode) {
+        this.flinkRestUrl = restUrl.replaceAll("/+$", "");
+        this.submissionMode = mode;
+    }
+
+    /** Update all editable runtime settings used by subsequent Flink operations. */
+    public void updateRuntimeConfig(
+            String restUrl,
+            String mode,
+            String savepointDirectory,
+            boolean gatewayEnabled,
+            String gatewayUrl
+    ) {
+        updateRuntimeConfig(restUrl, mode);
+        this.savepointDir = savepointDirectory;
+        this.sqlGatewayEnabled = gatewayEnabled;
+        this.sqlGatewayUrl = gatewayUrl.replaceAll("/+$", "");
+    }
 
     // ========================================================================
     // 1. Jar Upload + Run (Application / Session Mode)
@@ -228,8 +263,9 @@ public class FlinkClusterService {
         if (task.getCheckpointIntervalMs() != null) {
             flinkConfig.put("execution.checkpointing.interval", task.getCheckpointIntervalMs() + "ms");
             flinkConfig.put("execution.checkpointing.mode", "EXACTLY_ONCE");
-            flinkConfig.put("state.checkpoints.dir", savepointDir + "/checkpoints");
-            flinkConfig.put("state.savepoints.dir", savepointDir);
+            String storageUri = normalizeStorageUri(savepointDir);
+            flinkConfig.put("execution.checkpointing.dir", storageUri + "/checkpoints");
+            flinkConfig.put("execution.checkpointing.savepoint-dir", storageUri);
         }
         if (!flinkConfig.isEmpty()) {
             payload.put("flinkConfiguration", flinkConfig);
@@ -273,119 +309,372 @@ public class FlinkClusterService {
      * POST /v1/sessions/{sessionId}/statements
      */
     public Map<String, Object> submitViaSqlGateway(SyncTask task) {
+        return submitViaSqlGateway(task, null);
+    }
+
+    /** Submit SQL and optionally restore the resulting job from a savepoint. */
+    public Map<String, Object> submitViaSqlGateway(SyncTask task, String restorePath) {
         if (!sqlGatewayEnabled) {
             throw new IllegalStateException("SQL Gateway is not enabled");
         }
+        if (task.getFlinkSql() == null || task.getFlinkSql().isBlank()) {
+            throw new IllegalArgumentException("Flink SQL is empty");
+        }
         log.info("Submitting Flink SQL via SQL Gateway for task [{}]", task.getTaskName());
 
-        String sessionId = null;
+        String sessionHandle = null;
         try {
-            // Step 1: Create a session
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.APPLICATION_JSON);
 
-            Map<String, Object> sessionPayload = Map.of("sessionConfig", Map.of());
-            HttpEntity<Map<String, Object>> sessionReq = new HttpEntity<>(sessionPayload, headers);
+            // The SQL Gateway REST API uses sessionHandle/operationHandle. Do
+            // not send the old sessionConfig shape, which is not part of the API.
+            HttpEntity<Void> sessionReq = new HttpEntity<>(headers);
 
             ResponseEntity<String> sessionResp = restTemplate.postForEntity(
                 sqlGatewayUrl + "/v1/sessions", sessionReq, String.class);
 
             if (sessionResp.getStatusCode().is2xxSuccessful() && sessionResp.getBody() != null) {
                 JsonNode json = objectMapper.readTree(sessionResp.getBody());
-                sessionId = json.path("sessionId").asText();
+                sessionHandle = firstNonBlankText(json, "sessionHandle", "sessionId");
             }
 
-            if (sessionId == null) {
-                throw new IllegalStateException("Failed to create SQL Gateway session");
+            if (sessionHandle == null || sessionHandle.isBlank()) {
+                throw new IllegalStateException("SQL Gateway did not return a sessionHandle");
             }
 
-            // Step 2: Execute the SQL statement
-            Map<String, Object> stmtPayload = new LinkedHashMap<>();
-            stmtPayload.put("statement", task.getFlinkSql());
-            stmtPayload.put("executionConfig", Map.of(
-                "parallelism", task.getParallelism() != null ? task.getParallelism() : 1
-            ));
+            List<String> statements = splitSqlStatements(task.getFlinkSql());
+            if (statements.isEmpty()) {
+                throw new IllegalArgumentException("Flink SQL contains no executable statements");
+            }
 
-            HttpEntity<Map<String, Object>> stmtReq = new HttpEntity<>(stmtPayload, headers);
+            Set<String> jobsBeforeSubmission = listClusterJobIds();
+            Map<String, String> executionConfig = buildSqlGatewayExecutionConfig(task, restorePath);
+            String jobId = null;
+            String lastOperationHandle = null;
 
-            ResponseEntity<String> stmtResp = restTemplate.postForEntity(
-                sqlGatewayUrl + "/v1/sessions/" + sessionId + "/statements",
-                stmtReq, String.class);
+            // SQL Gateway executes one statement per operation. Catalog, USE,
+            // database and table DDL must finish in the same session before INSERT.
+            for (int index = 0; index < statements.size(); index++) {
+                String statement = statements.get(index);
+                Map<String, Object> statementPayload = new LinkedHashMap<>();
+                statementPayload.put("statement", statement);
+                statementPayload.put("executionConfig", executionConfig);
 
-            if (stmtResp.getStatusCode().is2xxSuccessful() && stmtResp.getBody() != null) {
-                JsonNode json = objectMapper.readTree(stmtResp.getBody());
-                String operationId = json.path("operationId").asText();
-
-                // Step 3: Poll for job ID from the operation result
-                String jobId = pollSqlGatewayJobId(sessionId, operationId);
-
-                log.info("SQL Gateway job submitted: sessionId={}, operationId={}, jobId={}",
-                    sessionId, operationId, jobId);
-                return Map.of(
-                    "jobId", jobId,
-                    "sessionId", sessionId,
-                    "submittedAt", LocalDateTime.now().toString()
+                ResponseEntity<String> statementResponse = restTemplate.postForEntity(
+                        sqlGatewayUrl + "/v1/sessions/" + sessionHandle + "/statements",
+                        new HttpEntity<>(statementPayload, headers),
+                        String.class
                 );
+                if (!statementResponse.getStatusCode().is2xxSuccessful()
+                        || statementResponse.getBody() == null) {
+                    throw new IllegalStateException("SQL Gateway rejected statement " + (index + 1)
+                            + ": HTTP " + statementResponse.getStatusCode());
+                }
+
+                JsonNode operationResponse = objectMapper.readTree(statementResponse.getBody());
+                lastOperationHandle = firstNonBlankText(operationResponse, "operationHandle", "operationId");
+                if (lastOperationHandle == null || lastOperationHandle.isBlank()) {
+                    throw new IllegalStateException("SQL Gateway did not return operationHandle for statement "
+                            + (index + 1));
+                }
+
+                JsonNode operationResult = waitForSqlGatewayOperation(sessionHandle, lastOperationHandle);
+                String resultJobId = extractFlinkJobId(operationResult);
+                if (resultJobId != null) {
+                    jobId = resultJobId;
+                }
             }
-            throw new IllegalStateException("SQL statement submission failed");
+
+            if (jobId == null) {
+                jobId = waitForNewClusterJob(jobsBeforeSubmission, task.getTaskName());
+            }
+            if (jobId == null) {
+                throw new IllegalStateException("SQL submitted but Flink job ID was not returned by SQL Gateway");
+            }
+
+            log.info("SQL Gateway job submitted: sessionHandle={}, operationHandle={}, jobId={}",
+                    sessionHandle, lastOperationHandle, jobId);
+            return Map.of(
+                    "jobId", jobId,
+                    "sessionId", sessionHandle,
+                    "submittedAt", LocalDateTime.now().toString()
+            );
         } catch (Exception e) {
             log.error("SQL Gateway submission error: {}", e.getMessage());
             throw new RuntimeException("SQL Gateway submission error: " + e.getMessage(), e);
         } finally {
-            // Clean up session to avoid resource leak
-            if (sessionId != null) {
+            if (sessionHandle != null) {
                 try {
-                    restTemplate.delete(sqlGatewayUrl + "/v1/sessions/" + sessionId);
-                    log.debug("SQL Gateway session {} cleaned up", sessionId);
+                    restTemplate.delete(sqlGatewayUrl + "/v1/sessions/" + sessionHandle);
+                    log.debug("SQL Gateway session {} cleaned up", sessionHandle);
                 } catch (Exception cleanupEx) {
-                    log.warn("Failed to clean up SQL Gateway session {}: {}", sessionId, cleanupEx.getMessage());
+                    log.warn("Failed to clean up SQL Gateway session {}: {}",
+                            sessionHandle, cleanupEx.getMessage());
                 }
             }
         }
     }
 
-    /**
-     * Poll the SQL Gateway operation to get the resulting Flink job ID.
-     * GET /v1/sessions/{sessionId}/operations/{operationId}/result
-     */
-    private String pollSqlGatewayJobId(String sessionId, String operationId) {
-        int maxAttempts = 30;
-        long pollIntervalMs = 2000;
-
-        for (int i = 0; i < maxAttempts; i++) {
+    private JsonNode waitForSqlGatewayOperation(String sessionHandle, String operationHandle) {
+        for (int attempt = 0; attempt < 60; attempt++) {
             try {
-                ResponseEntity<String> resp = restTemplate.getForEntity(
-                    sqlGatewayUrl + "/v1/sessions/" + sessionId
-                    + "/operations/" + operationId + "/result/0",
+                ResponseEntity<String> statusResponse = restTemplate.getForEntity(
+                    sqlGatewayUrl + "/v1/sessions/" + sessionHandle
+                    + "/operations/" + operationHandle + "/status",
                     String.class);
 
-                if (resp.getStatusCode().is2xxSuccessful() && resp.getBody() != null) {
-                    JsonNode json = objectMapper.readTree(resp.getBody());
-                    String status = json.path("status").asText();
-
-                    if ("FINISHED".equals(status)) {
-                        // Extract job ID from result rows
-                        JsonNode results = json.path("results");
-                        if (results.isArray() && results.size() > 0) {
-                            return results.get(0).path("jobId").asText();
-                        }
-                    } else if ("FAILED".equals(status) || "CANCELED".equals(status)) {
-                        String error = json.path("error").asText();
-                        throw new IllegalStateException("SQL Gateway operation failed: " + error);
+                if (statusResponse.getStatusCode().is2xxSuccessful()
+                        && statusResponse.getBody() != null) {
+                    JsonNode statusJson = objectMapper.readTree(statusResponse.getBody());
+                    String status = statusJson.path("status").asText("");
+                    if ("FINISHED".equalsIgnoreCase(status)) {
+                        return fetchSqlGatewayOperationResult(sessionHandle, operationHandle);
                     }
-                    // Still PENDING or RUNNING, continue polling
+                    if (Set.of("ERROR", "FAILED", "CANCELED", "CLOSED").contains(status.toUpperCase())) {
+                        JsonNode errorResult = fetchSqlGatewayOperationResult(sessionHandle, operationHandle);
+                        String detail = extractSqlGatewayError(errorResult);
+                        throw new IllegalStateException("SQL Gateway operation ended with status " + status
+                                + (detail == null ? "" : ": " + detail));
+                    }
                 }
             } catch (IllegalStateException e) {
                 throw e;
             } catch (Exception e) {
-                log.warn("SQL Gateway poll attempt {} failed: {}", i, e.getMessage());
+                log.warn("SQL Gateway operation poll {} failed: {}", attempt + 1, e.getMessage());
             }
 
-            try { Thread.sleep(pollIntervalMs); } catch (InterruptedException ignored) {}
+            try {
+                Thread.sleep(500);
+            } catch (InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
+                throw new IllegalStateException("Interrupted while waiting for SQL Gateway operation", interrupted);
+            }
         }
 
-        throw new IllegalStateException("SQL Gateway job ID polling timed out after "
-            + maxAttempts + " attempts");
+        throw new IllegalStateException("SQL Gateway operation timed out after 30 seconds");
+    }
+
+    private JsonNode fetchSqlGatewayOperationResult(String sessionHandle, String operationHandle) {
+        try {
+            ResponseEntity<String> resultResponse = restTemplate.getForEntity(
+                    sqlGatewayUrl + "/v1/sessions/" + sessionHandle
+                            + "/operations/" + operationHandle + "/result/0",
+                    String.class
+            );
+            return resultResponse.getBody() == null
+                    ? objectMapper.createObjectNode()
+                    : objectMapper.readTree(resultResponse.getBody());
+        } catch (RestClientResponseException exception) {
+            try {
+                return objectMapper.readTree(exception.getResponseBodyAsString());
+            } catch (Exception parseException) {
+                return objectMapper.createObjectNode().put("fetchError", exception.getMessage());
+            }
+        } catch (Exception exception) {
+            return objectMapper.createObjectNode().put("fetchError", exception.getMessage());
+        }
+    }
+
+    static String extractSqlGatewayError(JsonNode result) {
+        JsonNode errors = result.path("errors");
+        String detail = "";
+        if (errors.isArray()) {
+            for (JsonNode error : errors) {
+                String candidate = error.asText("");
+                if (candidate.contains("Caused by:") || candidate.length() > detail.length()) {
+                    detail = candidate;
+                }
+            }
+        }
+        if (detail.isBlank()) {
+            detail = result.path("fetchError").asText("");
+        }
+        if (detail.isBlank()) return null;
+        // Keep the useful root-cause tail without filling sync_task.last_error_msg
+        // with the entire server-side stack trace.
+        int causedBy = detail.lastIndexOf("Caused by:");
+        String concise = causedBy >= 0 ? detail.substring(causedBy) : detail;
+        return concise.length() > 1800 ? concise.substring(0, 1800) + "..." : concise;
+    }
+
+    static String normalizeStorageUri(String location) {
+        String value = location == null || location.isBlank()
+                ? "file:///tmp/flink-savepoints"
+                : location.trim();
+        URI uri = URI.create(value);
+        if (uri.getScheme() != null) {
+            return value.replaceAll("/+$", "");
+        }
+        return Path.of(value).toAbsolutePath().normalize().toUri().toString().replaceAll("/+$", "");
+    }
+
+    private Map<String, String> buildSqlGatewayExecutionConfig(SyncTask task, String restorePath) {
+        Map<String, String> config = new LinkedHashMap<>();
+        config.put("pipeline.name", task.getTaskName());
+        config.put("parallelism.default", String.valueOf(
+                task.getParallelism() == null ? 1 : task.getParallelism()));
+        config.put("table.dml-sync", "false");
+        if (task.getCheckpointIntervalMs() != null) {
+            config.put("execution.checkpointing.interval", task.getCheckpointIntervalMs() + "ms");
+            config.put("execution.checkpointing.mode", "EXACTLY_ONCE");
+            String storageUri = normalizeStorageUri(savepointDir);
+            config.put("execution.checkpointing.dir", storageUri + "/checkpoints");
+            config.put("execution.checkpointing.savepoint-dir", storageUri);
+        }
+        if (restorePath != null && !restorePath.isBlank()) {
+            config.put("execution.savepoint.path", restorePath);
+            config.put("execution.savepoint.ignore-unclaimed-state", "true");
+        }
+
+        try {
+            URI restUri = URI.create(flinkRestUrl);
+            if (restUri.getHost() != null) {
+                config.put("rest.address", restUri.getHost());
+                config.put("rest.port", String.valueOf(restUri.getPort() > 0 ? restUri.getPort() : 8081));
+            }
+        } catch (Exception ignored) {
+            log.warn("Unable to derive SQL Gateway target cluster from {}", flinkRestUrl);
+        }
+        return config;
+    }
+
+    static List<String> splitSqlStatements(String sqlScript) {
+        List<String> statements = new ArrayList<>();
+        StringBuilder current = new StringBuilder();
+        boolean singleQuoted = false;
+        boolean doubleQuoted = false;
+        boolean backtickQuoted = false;
+        boolean lineComment = false;
+
+        for (int index = 0; index < sqlScript.length(); index++) {
+            char currentChar = sqlScript.charAt(index);
+            char nextChar = index + 1 < sqlScript.length() ? sqlScript.charAt(index + 1) : '\0';
+
+            if (lineComment) {
+                if (currentChar == '\n' || currentChar == '\r') {
+                    lineComment = false;
+                    current.append(' ');
+                }
+                continue;
+            }
+            if (!singleQuoted && !doubleQuoted && !backtickQuoted
+                    && currentChar == '-' && nextChar == '-') {
+                lineComment = true;
+                index++;
+                continue;
+            }
+            if (currentChar == '\'' && !doubleQuoted && !backtickQuoted) {
+                current.append(currentChar);
+                if (singleQuoted && nextChar == '\'') {
+                    current.append(nextChar);
+                    index++;
+                } else {
+                    singleQuoted = !singleQuoted;
+                }
+                continue;
+            }
+            if (currentChar == '"' && !singleQuoted && !backtickQuoted) {
+                doubleQuoted = !doubleQuoted;
+            } else if (currentChar == '`' && !singleQuoted && !doubleQuoted) {
+                backtickQuoted = !backtickQuoted;
+            }
+
+            if (currentChar == ';' && !singleQuoted && !doubleQuoted && !backtickQuoted) {
+                String statement = current.toString().trim();
+                if (!statement.isEmpty()) {
+                    statements.add(statement);
+                }
+                current.setLength(0);
+            } else {
+                current.append(currentChar);
+            }
+        }
+
+        String tail = current.toString().trim();
+        if (!tail.isEmpty()) {
+            statements.add(tail);
+        }
+        return statements;
+    }
+
+    private String firstNonBlankText(JsonNode json, String... fields) {
+        for (String field : fields) {
+            String value = json.path(field).asText("");
+            if (!value.isBlank()) {
+                return value;
+            }
+        }
+        return null;
+    }
+
+    static String extractFlinkJobId(JsonNode node) {
+        if (node == null || node.isNull()) {
+            return null;
+        }
+        if (node.isTextual()) {
+            String value = node.asText().trim();
+            if (value.matches("(?i)[0-9a-f]{32}")) {
+                return value;
+            }
+            return null;
+        }
+        if (node.isContainerNode()) {
+            for (JsonNode child : node) {
+                String found = extractFlinkJobId(child);
+                if (found != null) {
+                    return found;
+                }
+            }
+        }
+        return null;
+    }
+
+    private Set<String> listClusterJobIds() {
+        Set<String> ids = new LinkedHashSet<>();
+        try {
+            ResponseEntity<String> response = restTemplate.getForEntity(
+                    flinkRestUrl + "/jobs/overview", String.class);
+            if (response.getBody() != null) {
+                for (JsonNode job : objectMapper.readTree(response.getBody()).path("jobs")) {
+                    String id = job.path("jid").asText("");
+                    if (!id.isBlank()) ids.add(id);
+                }
+            }
+        } catch (Exception exception) {
+            log.warn("Unable to snapshot Flink jobs before SQL submission: {}", exception.getMessage());
+        }
+        return ids;
+    }
+
+    private String waitForNewClusterJob(Set<String> existingJobIds, String taskName) {
+        for (int attempt = 0; attempt < 15; attempt++) {
+            try {
+                ResponseEntity<String> response = restTemplate.getForEntity(
+                        flinkRestUrl + "/jobs/overview", String.class);
+                if (response.getBody() != null) {
+                    JsonNode jobs = objectMapper.readTree(response.getBody()).path("jobs");
+                    String firstNewJob = null;
+                    for (JsonNode job : jobs) {
+                        String id = job.path("jid").asText("");
+                        if (!id.isBlank() && !existingJobIds.contains(id)) {
+                            if (taskName.equals(job.path("name").asText())) return id;
+                            if (firstNewJob == null) firstNewJob = id;
+                        }
+                    }
+                    if (firstNewJob != null) return firstNewJob;
+                }
+            } catch (Exception exception) {
+                log.warn("Unable to resolve submitted Flink job ID: {}", exception.getMessage());
+            }
+            try {
+                Thread.sleep(1000);
+            } catch (InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
+                return null;
+            }
+        }
+        return null;
     }
 
     // ========================================================================
@@ -402,7 +691,7 @@ public class FlinkClusterService {
 
         try {
             Map<String, Object> payload = new LinkedHashMap<>();
-            payload.put("targetDirectory", savepointDir);
+            payload.put("targetDirectory", normalizeStorageUri(savepointDir));
             payload.put("drain", false);  // Don't drain before savepoint for CDC jobs
 
             HttpHeaders headers = new HttpHeaders();
@@ -420,7 +709,7 @@ public class FlinkClusterService {
                 // Fallback to Flink 1.x style
                 log.info("Flink /stop endpoint not available, falling back to /savepoints endpoint");
                 Map<String, Object> savepointPayload = Map.of(
-                    "targetDirectory", savepointDir,
+                    "targetDirectory", normalizeStorageUri(savepointDir),
                     "cancelJob", true  // cancel with savepoint (Flink 1.x way)
                 );
                 HttpEntity<Map<String, Object>> savepointReq = new HttpEntity<>(savepointPayload, headers);
@@ -468,7 +757,7 @@ public class FlinkClusterService {
 
         try {
             Map<String, Object> payload = Map.of(
-                "targetDirectory", savepointDir,
+                "targetDirectory", normalizeStorageUri(savepointDir),
                 "cancelJob", false
             );
 
@@ -574,27 +863,21 @@ public class FlinkClusterService {
         log.info("Canceling Flink job: {}", flinkJobId);
 
         try {
-            // Flink 2.x: DELETE /jobs/{jobId}/cancel or PATCH
-            HttpHeaders headers = new HttpHeaders();
-            headers.setContentType(MediaType.APPLICATION_JSON);
-
-            HttpEntity<Void> request = new HttpEntity<>(headers);
-
-            ResponseEntity<String> response = restTemplate.exchange(
-                flinkRestUrl + "/jobs/" + flinkJobId + "/cancel",
-                HttpMethod.POST, request, String.class);
-
-            if (!response.getStatusCode().is2xxSuccessful()) {
-                log.warn("Cancel job returned non-2xx: {}", response.getStatusCode());
+            HttpRequest request = HttpRequest.newBuilder(
+                            URI.create(flinkRestUrl + "/jobs/" + flinkJobId + "?mode=cancel"))
+                    .timeout(Duration.ofSeconds(10))
+                    .method("PATCH", HttpRequest.BodyPublishers.noBody())
+                    .build();
+            HttpResponse<Void> response = FLINK_CANCEL_CLIENT.send(
+                    request, HttpResponse.BodyHandlers.discarding());
+            if (response.statusCode() < 200 || response.statusCode() >= 300) {
+                throw new IllegalStateException("HTTP " + response.statusCode());
             }
-
-            // Also try stopping if cancel didn't work
-            restTemplate.exchange(
-                flinkRestUrl + "/jobs/" + flinkJobId + "/stop?mode=cancel",
-                HttpMethod.POST, request, String.class);
-
-        } catch (Exception e) {
-            log.warn("Cancel job error (job may already be terminated): {}", e.getMessage());
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+            log.warn("Cancel job interrupted: {}", flinkJobId);
+        } catch (Exception exception) {
+            log.warn("Cancel job error (job may already be terminated): {}", exception.getMessage());
         }
     }
 
@@ -804,27 +1087,102 @@ public class FlinkClusterService {
      * GET /overview
      */
     public Map<String, Object> healthCheck() {
+        return healthCheck(flinkRestUrl);
+    }
+
+    /** Check an arbitrary Flink endpoint without changing the active runtime configuration. */
+    public Map<String, Object> healthCheck(String restUrl) {
+        String endpoint = restUrl.replaceAll("/+$", "");
+        long startTime = System.currentTimeMillis();
         try {
             ResponseEntity<String> resp = restTemplate.getForEntity(
-                flinkRestUrl + "/overview", String.class);
+                endpoint + "/overview", String.class);
 
             if (resp.getStatusCode().is2xxSuccessful() && resp.getBody() != null) {
-                JsonNode json = objectMapper.readTree(resp.getBody());
+                String body = resp.getBody().trim();
+                MediaType contentType = resp.getHeaders().getContentType();
+                if (!body.startsWith("{") && !body.startsWith("[")) {
+                    return invalidFlinkResponse(
+                            endpoint,
+                            startTime,
+                            contentType,
+                            "目标地址返回了网页内容而不是 Flink REST JSON；该端口可能被其他 Web 服务占用"
+                    );
+                }
 
-                return Map.of(
-                    "status", "healthy",
-                    "flinkVersion", json.path("flink-version").asText(),
-                    "runningJobs", json.path("jobs-running").asInt(),
-                    "taskSlotsAvailable", json.path("slots-available").asInt(),
-                    "taskSlotsTotal", json.path("slots-total").asInt(),
-                    "taskManagers", json.path("taskmanagers").asInt()
-                );
+                JsonNode json;
+                try {
+                    json = objectMapper.readTree(body);
+                } catch (Exception parseException) {
+                    return invalidFlinkResponse(
+                            endpoint,
+                            startTime,
+                            contentType,
+                            "目标地址返回的内容不是有效 JSON，无法识别为 Flink REST 服务"
+                    );
+                }
+
+                if (!json.hasNonNull("flink-version") || !json.has("taskmanagers")) {
+                    return invalidFlinkResponse(
+                            endpoint,
+                            startTime,
+                            contentType,
+                            "目标地址返回了 JSON，但缺少 Flink overview 标识字段"
+                    );
+                }
+
+                Map<String, Object> result = new LinkedHashMap<>();
+                result.put("status", "healthy");
+                result.put("endpoint", endpoint);
+                result.put("flinkVersion", json.path("flink-version").asText("unknown"));
+                result.put("runningJobs", json.path("jobs-running").asInt());
+                result.put("finishedJobs", json.path("jobs-finished").asInt());
+                result.put("failedJobs", json.path("jobs-failed").asInt());
+                result.put("cancelledJobs", json.path("jobs-cancelled").asInt());
+                result.put("taskSlotsAvailable", json.path("slots-available").asInt());
+                result.put("taskSlotsTotal", json.path("slots-total").asInt());
+                result.put("taskManagers", json.path("taskmanagers").asInt());
+                result.put("responseTimeMs", System.currentTimeMillis() - startTime);
+                result.put("checkedAt", Instant.now().toString());
+                return result;
             }
-            return Map.of("status", "unhealthy", "error", "Invalid response from Flink");
+            return Map.of(
+                    "status", "unhealthy",
+                    "endpoint", endpoint,
+                    "responseTimeMs", System.currentTimeMillis() - startTime,
+                    "checkedAt", Instant.now().toString(),
+                    "error", "Flink 返回了无效响应: HTTP " + resp.getStatusCode().value()
+            );
         } catch (Exception e) {
             log.warn("Flink health check failed: {}", e.getMessage());
-            return Map.of("status", "unreachable", "error", e.getMessage());
+            return Map.of(
+                    "status", "unreachable",
+                    "endpoint", endpoint,
+                    "responseTimeMs", System.currentTimeMillis() - startTime,
+                    "checkedAt", Instant.now().toString(),
+                    "error", e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage()
+            );
         }
+    }
+
+    private Map<String, Object> invalidFlinkResponse(
+            String endpoint,
+            long startTime,
+            MediaType contentType,
+            String reason
+    ) {
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("status", "unhealthy");
+        result.put("endpoint", endpoint);
+        result.put("responseTimeMs", System.currentTimeMillis() - startTime);
+        result.put("checkedAt", Instant.now().toString());
+        result.put("diagnosticCode", "NOT_FLINK_REST");
+        result.put("error", reason);
+        result.put("suggestion", "请在“编辑配置”中填写真实的 Flink JobManager REST 地址，并确认 /overview 返回 JSON");
+        if (contentType != null) {
+            result.put("contentType", contentType.toString());
+        }
+        return result;
     }
 
     // ========================================================================

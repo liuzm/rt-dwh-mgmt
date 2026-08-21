@@ -1,8 +1,7 @@
-import React, { useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { PageContainer, ProForm, ProFormSelect, ProFormText, ProFormDigit, ProFormTextArea } from '@ant-design/pro-components';
 import { Card, Table, Tag, Button, Space, Modal, message, Popconfirm, Descriptions, Badge } from 'antd';
 import { PlusOutlined, ReloadOutlined, LinkOutlined, DisconnectOutlined } from '@ant-design/icons';
-import { useRequest } from '@umijs/max';
 import { getDatasources, createDatasource, testDatasourceConnection, deleteDatasource, updateDatasource } from '@/api';
 
 const dbTypeColorMap: Record<string, string> = {
@@ -17,15 +16,42 @@ const dbTypeLabelMap: Record<string, string> = {
   paimon: 'Paimon',
 };
 
+const formatBackendDateTime = (value: unknown) => {
+  if (!value) return '—';
+  if (Array.isArray(value)) {
+    const [year, month, day, hour = 0, minute = 0, second = 0, nano = 0] = value.map(Number);
+    const date = new Date(year, month - 1, day, hour, minute, second, Math.floor(nano / 1_000_000));
+    return Number.isNaN(date.getTime()) ? '—' : date.toLocaleString('zh-CN', { hour12: false });
+  }
+  const date = new Date(value as string | number | Date);
+  return Number.isNaN(date.getTime()) ? '—' : date.toLocaleString('zh-CN', { hour12: false });
+};
+
 const Datasource: React.FC = () => {
   const [createModalVisible, setCreateModalVisible] = useState(false);
   const [editModalVisible, setEditModalVisible] = useState(false);
   const [editingDs, setEditingDs] = useState<API.DatasourceConfig | null>(null);
   const [editForm, setEditForm] = useState<any>({});
   const [testResult, setTestResult] = useState<{ id: number; result: any } | null>(null);
+  const [datasources, setDatasources] = useState<API.DatasourceConfig[]>([]);
+  const [loading, setLoading] = useState(false);
 
-  const { data, loading, refresh } = useRequest(getDatasources);
-  const datasources = data || [];
+  const refresh = useCallback(async () => {
+    setLoading(true);
+    try {
+      const result = await getDatasources();
+      setDatasources(result);
+    } catch (error: any) {
+      setDatasources([]);
+      message.error(error?.message || '数据源列表加载失败');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void refresh();
+  }, [refresh]);
 
   const handleCreate = async (values: any) => {
     try {
@@ -39,7 +65,7 @@ const Datasource: React.FC = () => {
       await createDatasource(payload);
       message.success('数据源创建成功');
       setCreateModalVisible(false);
-      refresh();
+      await refresh();
     } catch (e: any) {
       message.error(e?.message || '创建异常');
     }
@@ -82,16 +108,18 @@ const Datasource: React.FC = () => {
     try {
       const payload = {
         ...values,
-        passwordEncrypted: values.password,
         extraParams: values.extraConfig,
       };
+      if (values.password?.trim()) {
+        payload.passwordEncrypted = values.password;
+      }
       delete payload.password;
       delete payload.extraConfig;
       await updateDatasource(editingDs.id, payload);
       message.success('数据源已更新');
       setEditModalVisible(false);
       setEditingDs(null);
-      refresh();
+      await refresh();
     } catch (e: any) {
       message.error(e?.message || '更新异常');
     }
@@ -107,12 +135,12 @@ const Datasource: React.FC = () => {
           <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateModalVisible(true)}>
             新建数据源
           </Button>
-          <Button icon={<ReloadOutlined />} onClick={refresh}>
+          <Button icon={<ReloadOutlined spin={loading} />} onClick={() => void refresh()} loading={loading}>
             刷新
           </Button>
         </Space>
 
-        <Table
+        <Table<API.DatasourceConfig>
           dataSource={datasources}
           rowKey="id"
           loading={loading}
@@ -149,7 +177,7 @@ const Datasource: React.FC = () => {
               dataIndex: 'createdAt',
               key: 'created',
               width: 160,
-              render: (v) => v ? new Date(v).toLocaleString('zh-CN') : '—',
+              render: formatBackendDateTime,
             },
             {
               title: '操作',
@@ -170,7 +198,7 @@ const Datasource: React.FC = () => {
                     try {
                       await deleteDatasource(record.id);
                       message.success('数据源已删除');
-                      refresh();
+                      await refresh();
                     } catch (e) {
                       message.error('删除失败');
                     }

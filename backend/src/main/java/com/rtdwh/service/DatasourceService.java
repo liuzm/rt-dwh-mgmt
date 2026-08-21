@@ -38,8 +38,31 @@ public class DatasourceService {
     @Transactional
     public DatasourceConfig updateDatasource(Long id, DatasourceConfig config) {
         DatasourceConfig existing = getDatasource(id);
-        config.setId(existing.getId());
-        return datasourceConfigRepository.save(config);
+
+        // Update only user-editable fields on the managed entity. Replacing it
+        // with the request body would clear creatorId/createdAt and other fields
+        // that are intentionally absent from the edit form.
+        if (config.getConfigName() != null && !config.getConfigName().isBlank()) {
+            existing.setConfigName(config.getConfigName().trim());
+        }
+        if (config.getHost() != null && !config.getHost().isBlank()) {
+            existing.setHost(config.getHost().trim());
+        }
+        if (config.getPort() != null) {
+            existing.setPort(config.getPort());
+        }
+        if (config.getDatabase() != null && !config.getDatabase().isBlank()) {
+            existing.setDatabase(config.getDatabase().trim());
+        }
+        if (config.getUsername() != null && !config.getUsername().isBlank()) {
+            existing.setUsername(config.getUsername().trim());
+        }
+        if (config.getPasswordEncrypted() != null && !config.getPasswordEncrypted().isBlank()) {
+            existing.setPasswordEncrypted(config.getPasswordEncrypted());
+        }
+        existing.setExtraParams(config.getExtraParams());
+
+        return datasourceConfigRepository.save(existing);
     }
 
     @Transactional

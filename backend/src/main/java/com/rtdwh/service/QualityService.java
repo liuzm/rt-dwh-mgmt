@@ -34,8 +34,52 @@ public class QualityService {
         return ruleRepository.save(rule);
     }
 
+    @Transactional
+    public QualityRule updateRule(Long id, QualityRule input) {
+        QualityRule rule = ruleRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("质量规则不存在: " + id));
+        rule.setRuleName(input.getRuleName());
+        rule.setRuleType(input.getRuleType());
+        rule.setLayer(input.getLayer());
+        rule.setTargetTable(input.getTargetTable());
+        rule.setTargetColumn(input.getTargetColumn());
+        rule.setThreshold(input.getThreshold());
+        rule.setExpression(input.getExpression());
+        if (input.getEnabled() != null) {
+            rule.setEnabled(input.getEnabled());
+        }
+        rule.setUpdatedAt(LocalDateTime.now());
+        return ruleRepository.save(rule);
+    }
+
+    @Transactional
+    public QualityRule setRuleEnabled(Long id, boolean enabled) {
+        QualityRule rule = ruleRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("质量规则不存在: " + id));
+        rule.setEnabled(enabled);
+        rule.setUpdatedAt(LocalDateTime.now());
+        return ruleRepository.save(rule);
+    }
+
+    @Transactional
+    public void deleteRule(Long id) {
+        if (!ruleRepository.existsById(id)) {
+            throw new IllegalArgumentException("质量规则不存在: " + id);
+        }
+        ruleRepository.deleteById(id);
+    }
+
     @Transactional(readOnly = true)
     public List<QualityAlert> listAlerts(String level, Boolean resolved) {
         return alertRepository.searchAlerts(level, resolved, null);
+    }
+
+    @Transactional
+    public QualityAlert resolveAlert(Long id) {
+        QualityAlert alert = alertRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("质量告警不存在: " + id));
+        alert.setResolved(true);
+        alert.setResolvedAt(LocalDateTime.now());
+        return alertRepository.save(alert);
     }
 }

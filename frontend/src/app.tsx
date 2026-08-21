@@ -3,6 +3,11 @@ import { getCurrentUser } from '@/api';
 import type { RequestConfig } from '@umijs/max';
 import { message } from 'antd';
 import React from 'react';
+import {
+  DatabaseOutlined,
+  LogoutOutlined,
+} from '@ant-design/icons';
+import './global.less';
 
 /** 白名单路由 —— 不需要登录即可访问 */
 const LOGIN_PATH = '/user/login';
@@ -66,11 +71,18 @@ export async function getInitialState() {
  */
 export const layout: RunTimeLayoutConfig = ({ initialState }) => {
   return {
-    title: '实时数仓管理平台',
-    logo: false,
-    navTheme: 'light',
-    colorPrimary: '#1a73e8',
-    layout: 'mix',
+    title: '实时数仓平台',
+    logo: <DatabaseOutlined style={{ color: '#69b1ff', fontSize: 22 }} />,
+    navTheme: 'realDark',
+    colorPrimary: '#1890ff',
+    layout: 'side',
+    // Keep the navigation visible on first load. Users can still collapse it
+    // with the standard ProLayout toggle.
+    defaultCollapsed: false,
+    siderWidth: 200,
+    menu: {
+      defaultOpenAll: true,
+    },
     contentWidth: 'Fluid',
     fixedHeader: true,
     fixSiderbar: true,
@@ -78,10 +90,15 @@ export const layout: RunTimeLayoutConfig = ({ initialState }) => {
     avatarProps: {
       title: initialState?.currentUser?.username || 'User',
       size: 'small',
-      onActionsClick: () => {
-        localStorage.removeItem('token');
-        message.success('已退出登录');
-        history.push('/user/login');
+      menuProps: {
+        items: [{ key: 'logout', icon: <LogoutOutlined />, label: '退出登录' }],
+        onClick: ({ key }: { key: string }) => {
+          if (key === 'logout') {
+            localStorage.removeItem('token');
+            message.success('已退出登录');
+            history.push('/user/login');
+          }
+        },
       },
     },
     menuFooterRender: () => (
@@ -91,10 +108,13 @@ export const layout: RunTimeLayoutConfig = ({ initialState }) => {
     ),
     menuItemRender: (item, dom) => {
       if (!item.path) return dom;
+      const path = item.path;
       return (
         <a
-          onClick={() => {
-            history.push(item.path);
+          href={path}
+          onClick={(event) => {
+            event.preventDefault();
+            history.push(path);
           }}
         >
           {item.icon && (

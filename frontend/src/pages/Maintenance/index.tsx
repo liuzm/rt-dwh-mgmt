@@ -13,7 +13,8 @@ const layerColorMap: Record<string, string> = {
 };
 
 const formatSize = (bytes?: number) => {
-  if (!bytes) return '—';
+  if (bytes === undefined || bytes === null) return '—';
+  if (bytes === 0) return '0 B';
   const units = ['B', 'KB', 'MB', 'GB', 'TB'];
   let i = 0;
   let size = bytes;
@@ -30,10 +31,11 @@ const Maintenance: React.FC = () => {
 
   const { data: tablesData, loading: tablesLoading, refresh: refreshTables } = useRequest(() =>
     getDwhTables({ layer: layerFilter, keyword }),
+    { refreshDeps: [layerFilter, keyword] },
   );
   const { data: logsData, loading: logsLoading, refresh: refreshLogs } = useRequest(getMaintenanceLogs);
 
-  const tables = tablesData || [];
+  const tables = (tablesData || []) as API.DwhTableMeta[];
   const logs = (logsData || []) as any[];
 
   const handleCompact = async (tableId: number, strategy: string) => {
@@ -60,9 +62,9 @@ const Maintenance: React.FC = () => {
     }
   };
 
-  const handleCleanOrphan = async () => {
+  const handleCleanOrphan = async (tableId?: number) => {
     try {
-      await cleanOrphanFiles();
+      await cleanOrphanFiles(tableId);
       message.success('孤立文件清理已触发');
       refreshLogs();
     } catch (e) {
@@ -110,7 +112,7 @@ const Maintenance: React.FC = () => {
   const opMap: Record<string, { color: string; label: string }> = {
     compact: { color: 'blue', label: 'Compact' },
     expire_snapshots: { color: 'orange', label: '快照过期' },
-    clean_orphan_files: { color: 'red', label: '孤立文件清理' },
+    orphan_cleanup: { color: 'red', label: '孤立文件清理' },
   };
 
   const triggerTypeMap: Record<string, string> = {
@@ -128,7 +130,7 @@ const Maintenance: React.FC = () => {
           {
             key: 'tables',
             label: '表维护概览',
-            content: (
+            children: (
               <Card>
                 <Space style={{ marginBottom: 16 }}>
                   <Input
@@ -153,13 +155,13 @@ const Maintenance: React.FC = () => {
                   <Button icon={<ReloadOutlined />} onClick={refreshTables}>刷新</Button>
                 </Space>
 
-                <Table
+                <Table<API.DwhTableMeta>
                   dataSource={tables}
                   rowKey="id"
                   loading={tablesLoading}
                   columns={[
-                    { title: '库名', dataIndex: 'database', key: 'db', width: 80 },
-                    { title: '表名', dataIndex: 'tableName', key: 'table', width: 160 },
+                    { title: '库名', dataIndex: 'paimonDb', key: 'db', width: 100 },
+                    { title: '表名', dataIndex: 'paimonTable', key: 'table', width: 180 },
                     {
                       title: '分层',
                       dataIndex: 'layer',
@@ -176,7 +178,7 @@ const Maintenance: React.FC = () => {
                     },
                     {
                       title: '数据大小',
-                      dataIndex: 'totalSize',
+                      dataIndex: 'totalSizeBytes',
                       key: 'size',
                       width: 110,
                       render: (v) => formatSize(v),
@@ -217,18 +219,18 @@ const Maintenance: React.FC = () => {
                             size="small"
                             type="primary"
                             icon={<ToolOutlined />}
-                            onClick={() => setCompactModal({ visible: true, tableId: record.id, tableName: `${record.database || record.paimonDb}.${record.tableName || record.paimonTable}` })}
+                            onClick={() => setCompactModal({ visible: true, tableId: record.id, tableName: `${record.paimonDb}.${record.paimonTable}` })}
                           >
                             Compact
                           </Button>
                           <Button
                             size="small"
                             icon={<DeleteOutlined />}
-                            onClick={() => setExpireModal({ visible: true, tableId: record.id, tableName: `${record.database || record.paimonDb}.${record.tableName || record.paimonTable}`, retainLast: 10 })}
+                            onClick={() => setExpireModal({ visible: true, tableId: record.id, tableName: `${record.paimonDb}.${record.paimonTable}`, retainLast: 10 })}
                           >
                             过期清理
                           </Button>
-                          <Button size="small" type="link" danger onClick={handleCleanOrphan}>清理孤立文件</Button>
+                          <Button size="small" type="link" danger onClick={() => handleCleanOrphan(record.id)}>清理孤立文件</Button>
                         </Space>
                       ),
                     },
@@ -240,7 +242,7 @@ const Maintenance: React.FC = () => {
           {
             key: 'logs',
             label: '维护操作日志',
-            content: (
+            children: (
               <Card>
                 <Space style={{ marginBottom: 16 }}>
                   <Select placeholder="操作类型" allowClear style={{ width: 160 }} options={[
@@ -302,7 +304,7 @@ const Maintenance: React.FC = () => {
           {
             key: 'batch',
             label: '批量维护',
-            content: (
+            children: (
               <Card title="批量维护操作">
                 <Row gutter={16} style={{ marginBottom: 16 }}>
                   <Col span={8}>

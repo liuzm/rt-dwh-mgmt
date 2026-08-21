@@ -1,6 +1,7 @@
 package com.rtdwh.controller;
 
 import com.rtdwh.dto.ApiResponse;
+import com.rtdwh.dto.DwhSnapshotDTO;
 import com.rtdwh.entity.DwhColumnMeta;
 import com.rtdwh.entity.DwhTableMeta;
 import com.rtdwh.entity.DwhTableMeta.TableLayer;
@@ -39,6 +40,19 @@ public class DwhMetaController {
     @GetMapping("/tables/{id}/columns")
     public ApiResponse<List<DwhColumnMeta>> getTableColumns(@PathVariable Long id) {
         return ApiResponse.success(dwhMetaService.getTableColumns(id));
+    }
+
+    @GetMapping("/tables/{id}/snapshots")
+    public ApiResponse<List<DwhSnapshotDTO>> getTableSnapshots(@PathVariable Long id) {
+        return ApiResponse.success(dwhMetaService.getTableSnapshots(id));
+    }
+
+    @PutMapping("/columns/{id}/comment")
+    public ApiResponse<DwhColumnMeta> updateColumnComment(
+            @PathVariable Long id,
+            @RequestBody Map<String, String> body) {
+        return ApiResponse.success("字段注释已更新",
+                dwhMetaService.updateColumnComment(id, body.get("comment")));
     }
 
     @PutMapping("/tables/{id}/metadata")
@@ -82,5 +96,35 @@ public class DwhMetaController {
         Operation opEnum = operation != null ? Operation.valueOf(operation) : null;
         Status statusEnum = status != null ? Status.valueOf(status) : null;
         return ApiResponse.success(dwhMetaService.getMaintenanceLogs(tableMetaId, opEnum, statusEnum));
+    }
+
+    @PostMapping("/maintenance/batch-compact")
+    public ApiResponse<Map<String, Object>> batchCompact(@RequestBody Map<String, Object> body) {
+        TableLayer layer = parseLayer(body.get("layer"));
+        int threshold = body.get("fileCountThreshold") instanceof Number number ? number.intValue() : 200;
+        return ApiResponse.success(dwhMetaService.batchCompact(layer, Math.max(1, threshold)));
+    }
+
+    @PostMapping("/maintenance/batch-expire")
+    public ApiResponse<Map<String, Object>> batchExpireSnapshots(@RequestBody Map<String, Object> body) {
+        TableLayer layer = parseLayer(body.get("layer"));
+        int retainLast = body.get("retainLast") instanceof Number number ? number.intValue() : 10;
+        return ApiResponse.success(dwhMetaService.batchExpireSnapshots(layer, Math.max(1, retainLast)));
+    }
+
+    @PostMapping("/maintenance/clean-orphan")
+    public ApiResponse<Map<String, Object>> cleanOrphanFiles(@RequestBody(required = false) Map<String, Object> body) {
+        Long tableId = null;
+        if (body != null && body.get("tableId") instanceof Number number) {
+            tableId = number.longValue();
+        }
+        return ApiResponse.success(dwhMetaService.batchOrphanCleanup(tableId));
+    }
+
+    private TableLayer parseLayer(Object value) {
+        if (value == null || value.toString().isBlank() || "all".equalsIgnoreCase(value.toString())) {
+            return null;
+        }
+        return TableLayer.valueOf(value.toString().toLowerCase());
     }
 }

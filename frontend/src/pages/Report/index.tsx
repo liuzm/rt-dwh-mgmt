@@ -186,7 +186,7 @@ const Report: React.FC = () => {
   const [viewReport, setViewReport] = useState<any>(null);
 
   const { data: reportsData, loading, refresh } = useRequest(getReports);
-  const reports = reportsData || [];
+  const reports = (reportsData || []) as API.ReportTemplate[];
 
   const handleCreateReport = async (values: any) => {
     try {
@@ -230,7 +230,7 @@ const Report: React.FC = () => {
   const publishedCount = reports.filter((r: any) => r.isPublished).length;
 
   return (
-    <PageContainer>
+    <PageContainer className="report-page">
       <Tabs
         activeKey={activeTab}
         onChange={setActiveTab}
@@ -238,7 +238,7 @@ const Report: React.FC = () => {
           {
             key: 'dashboard',
             label: '报表看板',
-            content: (
+            children: (
               <>
                 <Row gutter={16} style={{ marginBottom: 16 }}>
                   <Col span={8}>
@@ -289,7 +289,7 @@ const Report: React.FC = () => {
           {
             key: 'list',
             label: '报表列表',
-            content: (
+            children: (
               <Card>
                 <Space style={{ marginBottom: 16 }}>
                   <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateModalVisible(true)}>
@@ -305,23 +305,23 @@ const Report: React.FC = () => {
                   <Button icon={<ReloadOutlined />} onClick={refresh}>刷新</Button>
                 </Space>
 
-                <Table
+                <Table<API.ReportTemplate>
                   dataSource={reports}
                   rowKey="id"
                   loading={loading}
                   columns={[
                     { title: 'ID', dataIndex: 'id', key: 'id', width: 50 },
-                    { title: '报表名称', dataIndex: 'name', key: 'name' },
+                    { title: '报表名称', dataIndex: 'reportName', key: 'name' },
                     {
                       title: '图表类型',
-                      dataIndex: 'chartType',
+                      dataIndex: 'reportType',
                       key: 'type',
                       width: 100,
                       render: (v: string) => <Tag color={chartTypeColor[v]}>{chartTypeLabel[v] || v}</Tag>,
                     },
                     {
                       title: 'SQL',
-                      dataIndex: 'sql',
+                      dataIndex: 'sqlQuery',
                       key: 'sql',
                       ellipsis: true,
                       width: 200,
@@ -407,7 +407,7 @@ const Report: React.FC = () => {
       </Modal>
 
       <Modal
-        title={`报表数据: ${viewReport?.name || ''}`}
+        title={`报表数据: ${viewReport?.reportName || ''}`}
         open={!!viewReport}
         onCancel={() => setViewReport(null)}
         footer={null}
@@ -415,8 +415,8 @@ const Report: React.FC = () => {
       >
         {viewReport && (
           <>
-            <p>SQL: <code style={{ background: '#f5f5f5', padding: '2px 6px', borderRadius: 4 }}>{viewReport.sql}</code></p>
-            <SimpleChart type={viewReport.chartType} width={800} height={300} />
+            <p>SQL: <code style={{ background: '#f5f5f5', padding: '2px 6px', borderRadius: 4 }}>{viewReport.sqlQuery}</code></p>
+            <SimpleChart type={viewReport.reportType} width={800} height={300} />
           </>
         )}
       </Modal>

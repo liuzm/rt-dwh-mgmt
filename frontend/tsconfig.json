@@ -1,19 +1,6 @@
 {
+  "extends": "./src/.umi/tsconfig.json",
   "compilerOptions": {
-    "target": "esnext",
-    "module": "esnext",
-    "moduleResolution": "bundler",
-    "jsx": "react-jsx",
-    "strict": true,
-    "esModuleInterop": true,
-    "skipLibCheck": true,
-    "forceConsistentCasingInFileNames": true,
-    "baseUrl": "./",
-    "paths": {
-      "@/*": ["src/*"]
-    },
-    "types": ["umi"]
-  },
-  "include": ["src/**/*", "typings.d.ts"],
-  "exclude": ["node_modules", "dist"]
+    "forceConsistentCasingInFileNames": true
+  }
 }

@@ -1,5 +1,6 @@
 package com.rtdwh.controller;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.rtdwh.dto.ApiResponse;
 import com.rtdwh.dto.SyncTaskCreateDTO;
 import com.rtdwh.dto.SyncTaskUpdateDTO;
@@ -29,6 +30,7 @@ public class SyncTaskController {
     private final CdcSqlGenerator cdcSqlGenerator;
     private final DatasourceService datasourceService;
     private final SecurityContextUtil securityContextUtil;
+    private final ObjectMapper objectMapper;
 
     // ========================================================================
     // CRUD
@@ -180,7 +182,8 @@ public class SyncTaskController {
             task.setSyncStrategy(SyncTask.SyncStrategy.valueOf((String) config.getOrDefault("syncStrategy", "full_then_incremental")));
             task.setParallelism(Integer.parseInt(String.valueOf(config.getOrDefault("parallelism", 1))));
             task.setCheckpointIntervalMs(Long.parseLong(String.valueOf(config.getOrDefault("checkpointIntervalMs", 60000))));
-            task.setTableMappings((String) config.get("tableMappings"));
+            Object mappings = config.get("tableMappings");
+            task.setTableMappings(mappings instanceof String ? (String) mappings : objectMapper.writeValueAsString(mappings));
 
             // Resolve source and target datasource configs
             Long sourceConfigId = config.get("sourceConfigId") != null

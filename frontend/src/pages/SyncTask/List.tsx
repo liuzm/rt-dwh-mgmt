@@ -25,6 +25,17 @@ const taskTypeMap: Record<string, string> = {
   materialized: '物化表',
 };
 
+const formatBackendDateTime = (value: unknown) => {
+  if (!value) return '—';
+  if (Array.isArray(value)) {
+    const [year, month, day, hour = 0, minute = 0, second = 0, nano = 0] = value.map(Number);
+    const date = new Date(year, month - 1, day, hour, minute, second, Math.floor(nano / 1_000_000));
+    return Number.isNaN(date.getTime()) ? '—' : date.toLocaleString('zh-CN', { hour12: false });
+  }
+  const date = new Date(value as string | number | Date);
+  return Number.isNaN(date.getTime()) ? '—' : date.toLocaleString('zh-CN', { hour12: false });
+};
+
 const SyncTaskList: React.FC = () => {
   const [statusFilter, setStatusFilter] = useState<string | undefined>();
   const [typeFilter, setTypeFilter] = useState<string | undefined>();
@@ -33,10 +44,12 @@ const SyncTaskList: React.FC = () => {
 
   const { data, loading, refresh } = useRequest(() =>
     getSyncTasks({ status: statusFilter, taskType: typeFilter, keyword }),
-    { refreshDeps: [statusFilter, typeFilter, keyword] },
+    {
+      refreshDeps: [statusFilter, typeFilter, keyword],
+    },
   );
 
-  const tasks = data || [];
+  const tasks = (data || []) as API.SyncTask[];
 
   const handleAction = async (action: string, id: number) => {
     setActionLoading((prev) => ({ ...prev, [id]: action }));
@@ -194,7 +207,7 @@ const SyncTaskList: React.FC = () => {
           </Tooltip>
         </Space>
 
-        <Table
+        <Table<API.SyncTask>
           dataSource={tasks}
           rowKey="id"
           loading={loading}
@@ -251,7 +264,7 @@ const SyncTaskList: React.FC = () => {
               title: '创建时间',
               dataIndex: 'createdAt',
               key: 'createdAt',
-              render: (v) => v ? new Date(v).toLocaleString() : '—',
+              render: formatBackendDateTime,
               width: 150,
             },
             {

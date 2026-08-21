@@ -7,7 +7,33 @@ CREATE DATABASE IF NOT EXISTS rtdwh_mgmt
   CHARACTER SET utf8mb4
   COLLATE utf8mb4_unicode_ci;
 
+-- Paimon JDBC Catalog metastore. Paimon creates its catalog tables lazily,
+-- but the containing database must exist before the first connection.
+-- Paimon 2.0 creates paimon_table_properties with a four-column VARCHAR(255)
+-- primary key. utf8mb4 can require 4080 index bytes and exceeds InnoDB's
+-- 3072-byte limit; utf8mb3 requires at most 3060.
+CREATE DATABASE IF NOT EXISTS rtdwh_paimon_meta
+  CHARACTER SET utf8mb3
+  COLLATE utf8mb3_unicode_ci;
+
+-- The official MySQL image creates MYSQL_USER before executing init scripts.
+-- Keep the default deployment user able to initialize Paimon catalog tables.
+GRANT ALL PRIVILEGES ON rtdwh_paimon_meta.* TO 'rtdwh_admin'@'%';
+FLUSH PRIVILEGES;
+
 USE rtdwh_mgmt;
+
+-- Latest persisted system dependency health snapshot
+CREATE TABLE IF NOT EXISTS sys_health_status (
+  status_key VARCHAR(32) PRIMARY KEY,
+  overall_status VARCHAR(20) NOT NULL,
+  payload_json LONGTEXT NOT NULL,
+  checked_at DATETIME NOT NULL,
+  duration_ms BIGINT NOT NULL DEFAULT 0,
+  check_source VARCHAR(20) NOT NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);
 
 -- SysUser
 CREATE TABLE IF NOT EXISTS sys_user (
@@ -121,6 +147,7 @@ CREATE TABLE IF NOT EXISTS dwh_table_meta (
   latest_commit_time TIMESTAMP,
   file_count INT,
   total_size_bytes BIGINT,
+  record_count BIGINT,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   UNIQUE KEY uk_db_table (paimon_db, paimon_table)
@@ -263,9 +290,23 @@ CREATE TABLE IF NOT EXISTS query_history (
   query_type ENUM('adhoc','report') NOT NULL,
   result_row_count INT,
   duration_ms BIGINT,
-  status ENUM('success','failed','cancelled') NOT NULL,
+  status ENUM('running','success','failed','cancelled') NOT NULL,
   error_msg TEXT,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (user_id) REFERENCES sys_user(id)
+);
+
+-- SavedQuery: user-owned SQL library
+CREATE TABLE IF NOT EXISTS saved_query (
+  id BIGINT AUTO_INCREMENT PRIMARY KEY,
+  user_id BIGINT NOT NULL,
+  name VARCHAR(128) NOT NULL,
+  sql_text TEXT NOT NULL,
+  description VARCHAR(512),
+  tags VARCHAR(256),
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY uk_saved_query_user_name (user_id, name),
   FOREIGN KEY (user_id) REFERENCES sys_user(id)
 );
 

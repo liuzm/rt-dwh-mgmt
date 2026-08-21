@@ -1,12 +1,54 @@
 import { defineConfig } from '@umijs/max';
 
 export default defineConfig({
-  antd: {},
+  antd: {
+    configProvider: {
+      theme: {
+        token: {
+          colorBgBase: '#ffffff',
+          colorBgContainer: '#ffffff',
+          colorBgElevated: '#ffffff',
+          colorTextBase: '#333333',
+          colorBorder: '#d9d9d9',
+          colorBorderSecondary: '#f0f0f0',
+          colorFillAlter: '#fafafa',
+        },
+        components: {
+          Table: {
+            headerBg: '#fafafa',
+            headerColor: '#344054',
+            rowHoverBg: '#e6f7ff',
+            borderColor: '#f0f0f0',
+          },
+          Input: {
+            activeBg: '#ffffff',
+            hoverBg: '#ffffff',
+          },
+          Select: {
+            selectorBg: '#ffffff',
+            optionActiveBg: '#e6f7ff',
+            optionSelectedBg: '#e6f7ff',
+          },
+          Button: {
+            defaultBg: '#ffffff',
+            defaultColor: '#333333',
+          },
+        },
+      },
+    },
+  },
   access: {},
   model: {},
   initialState: {},
-  request: {},
+  // app.tsx already unwraps the backend's ApiResponse.data globally.
+  // Keep useRequest from applying its default result => result.data a
+  // second time, which otherwise turns arrays and business objects into
+  // undefined across list, dashboard, settings, quality and report pages.
+  request: {
+    dataField: '',
+  },
   layout: {
+    layout: 'side',
     title: '实时数仓管理平台',
     locale: true,
     navTheme: 'dark',
@@ -16,6 +58,7 @@ export default defineConfig({
         colorBgMenuItemHover: 'rgba(255,255,255,0.08)',
       },
       header: {
+        heightLayoutHeader: 48,
         colorBgMenuItemSelected: '#1890ff',
         colorBgMenuItemHover: 'rgba(255,255,255,0.08)',
       },
@@ -29,6 +72,9 @@ export default defineConfig({
   hash: true,
   jsMinifier: 'terser',
   plugins: [],
+  metas: [
+    { name: 'color-scheme', content: 'only light' },
+  ],
   proxy: {
     '/api/v1': {
       target: 'http://localhost:8080',
@@ -99,11 +145,11 @@ export default defineConfig({
       icon: 'AlertOutlined',
       routes: [
         { path: '/system/alert', name: '告警管理', icon: 'BellOutlined', component: './Alert' },
-        { path: '/system/settings', name: '系统设置', icon: 'SettingOutlined', component: './Settings' },
+        { path: '/system/settings', name: '系统设置', icon: 'SettingOutlined', component: './Settings', access: 'canAdmin' },
       ],
     },
   ],
   theme: {
-    'primary-color': '#1a73e8',
+    'primary-color': '#1890ff',
   },
 });

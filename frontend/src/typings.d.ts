@@ -9,6 +9,14 @@ declare namespace API {
     data: T;
   }
 
+  interface PageResult<T> {
+    content: T[];
+    totalElements: number;
+    totalPages: number;
+    number: number;
+    size: number;
+  }
+
   /** 当前用户（与后端 LoginResponse 对齐） */
   interface CurrentUser {
     id: number;
@@ -23,7 +31,6 @@ declare namespace API {
   interface SyncTask {
     id: number;
     name: string;
-    taskName?: string;
     description: string;
     taskType: string; // CDC | SQL | BATCH | cdc_sync | etl | materialized
     status: string; // draft | submitting | running | paused | failed | cancelled | finished | saving_point
@@ -44,8 +51,8 @@ declare namespace API {
     checkpointCount: number;
     submittedAt?: string;
     lastCheckpointTime?: string;
-    createdAt: string;
-    updatedAt: string;
+    createdAt: string | number[];
+    updatedAt: string | number[];
     // Additional fields from backend entity
     taskName?: string;
     sourceConfigId?: number;
@@ -90,16 +97,16 @@ declare namespace API {
   /** 数仓表元数据 */
   interface DwhTableMeta {
     id: number;
-    database: string;
-    tableName: string;
-    paimonDb?: string;
-    paimonTable?: string;
+    paimonDb: string;
+    paimonTable: string;
+    database?: string;
+    tableName?: string;
     layer: string; // ods | dwd | dws | ads
     tableType: string;
     storageFormat: string;
-    recordCount: number;
-    totalSize: number;
+    recordCount?: number;
     totalSizeBytes?: number;
+    totalSize?: number;
     fileCount: number;
     lastModifiedTime: string;
     businessDesc: string;
@@ -111,6 +118,8 @@ declare namespace API {
     primaryKeys?: string;
     snapshotCount?: number;
     latestSnapshotId?: number;
+    latestCommitTime?: string | number[];
+    schemaJson?: string;
   }
 
   /** 数仓表列元数据 */
@@ -132,16 +141,59 @@ declare namespace API {
     defaultValue?: string;
   }
 
+  interface DwhSnapshot {
+    snapshotId: number;
+    schemaId: number;
+    commitKind: string;
+    commitTime?: string | number[];
+    recordCount: number;
+    deltaRecordCount: number;
+    manifestSizeBytes: number;
+  }
+
   /** 查询结果 */
   interface QueryResult {
-    columns: { name: string; type: string }[];
+    columns: string[];
     rows: any[][];
-    totalRows: number;
+    totalRows?: number;
     rowCount?: number;
-    executionTime: number;
+    executionTime?: number;
     durationMs?: number;
-    status?: string;
+    status?: 'running' | 'success' | 'failed' | 'cancelled' | string;
     errorMsg?: string;
+    historyId?: number;
+    requestId?: string;
+    truncated?: boolean;
+  }
+
+  interface QueryCatalog {
+    catalogName: string;
+    catalogKey: string;
+    databases: Array<{
+      name: string;
+      tables: Array<{
+        name: string;
+        layer: string;
+        columns: Array<{ name: string; type: string; primaryKey: boolean; nullable: boolean }>;
+      }>;
+    }>;
+  }
+
+  interface SavedQuery {
+    id: number;
+    name: string;
+    sqlText: string;
+    description?: string;
+    tags?: string;
+    createdAt: string | number[];
+    updatedAt: string | number[];
+  }
+
+  interface SavedQueryPayload {
+    name: string;
+    sqlText: string;
+    description?: string;
+    tags?: string;
   }
 
   /** 报表模板 */
@@ -164,14 +216,11 @@ declare namespace API {
   /** 告警规则 */
   interface AlertRule {
     id: number;
-    name: string;
-    description: string;
-    alertType: string;
-    condition: string;
-    threshold: number;
-    level: string; // info | warning | critical
+    ruleName: string;
+    ruleType: string;
+    expression?: string;
     enabled: boolean;
-    notifyChannels: string[];
+    notifyChannel?: string;
     createdAt: string;
     updatedAt: string;
   }
@@ -179,29 +228,81 @@ declare namespace API {
   /** 告警记录 */
   interface AlertRecord {
     id: number;
-    ruleId: number;
-    ruleName: string;
-    level: string;
-    message: string;
-    triggerValue: string;
-    triggerTime: string;
+    ruleType: string;
+    message?: string;
+    level?: string;
     resolved: boolean;
     resolvedAt?: string;
-    resolvedBy?: string;
+    triggeredAt?: string;
+  }
+
+  /** Flink 集群运行配置 */
+  interface FlinkClusterConfig {
+    restApiUrl: string;
+    submissionMode: 'application' | 'session';
+    savepointDir: string;
+    sqlGatewayEnabled: boolean;
+    sqlGatewayUrl: string;
+    flinkVersion: string;
+    source?: 'environment' | 'database';
+    updatedAt?: string;
+    updatedBy?: string;
+    loadError?: string;
+  }
+
+  /** 单项依赖健康检查结果 */
+  interface HealthComponent {
+    status: 'healthy' | 'degraded' | 'unhealthy' | 'unreachable' | 'unknown' | string;
+    checkedAt?: string;
+    responseTimeMs?: number;
+    error?: string;
+    endpoint?: string;
+    flinkVersion?: string;
+    runningJobs?: number;
+    finishedJobs?: number;
+    failedJobs?: number;
+    cancelledJobs?: number;
+    taskSlotsAvailable?: number;
+    taskSlotsTotal?: number;
+    taskManagers?: number;
+    warehousePath?: string;
+    metastoreUri?: string;
+    databaseCount?: number;
+    database?: string;
+    dbProduct?: string;
+    dbVersion?: string;
+    driver?: string;
+    readOnly?: boolean;
+    versionMatch?: boolean;
+    expectedVersion?: string;
+    diagnosticCode?: string;
+    suggestion?: string;
+    contentType?: string;
+  }
+
+  /** 全量系统健康检查结果 */
+  interface SystemHealth {
+    overall: 'healthy' | 'degraded' | 'unhealthy' | string;
+    checkedAt?: string;
+    durationMs?: number;
+    source?: 'scheduled' | 'manual' | 'none' | string;
+    lastCheckedComponent?: 'flink' | 'paimon' | 'mysql';
+    flink: HealthComponent;
+    paimon: HealthComponent;
+    mysql: HealthComponent;
   }
 
   /** 数据质量规则 */
   interface QualityRule {
     id: number;
-    name: string;
-    description: string;
+    ruleName: string;
     layer: string;
-    ruleType: string; // completeness | accuracy | consistency | timeliness | validity | uniqueness
+    ruleType: string; // null_rate | uniqueness | volume_compare | range_check
+    targetTable: string;
+    targetColumn?: string;
     expression: string;
     threshold: number;
     enabled: boolean;
-    lastCheckTime?: string;
-    lastCheckResult?: string;
     createdAt: string;
     updatedAt: string;
   }
@@ -210,11 +311,14 @@ declare namespace API {
   interface QualityAlert {
     id: number;
     ruleId: number;
-    ruleName: string;
+    ruleType: string;
+    targetTable: string;
+    targetColumn?: string;
     level: string;
     message: string;
-    actualValue: string;
-    triggerTime: string;
+    actualValue: number;
+    thresholdValue: number;
+    triggeredAt: string;
     resolved: boolean;
     resolvedAt?: string;
   }
@@ -247,6 +351,8 @@ declare namespace API {
     startedAt?: string;
     finishedAt?: string;
     durationMs?: number;
+    errorMsg?: string;
+    sqlContent?: string;
     paimonDb?: string;
     database?: string;
   }

@@ -56,6 +56,8 @@ public class DwhTableMeta {
 
     private Long totalSizeBytes;
 
+    private Long recordCount;
+
     @Version
     private Long version;
 

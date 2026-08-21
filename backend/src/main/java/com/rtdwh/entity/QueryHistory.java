@@ -51,6 +51,6 @@ public class QueryHistory {
     }
 
     public enum QueryStatus {
-        success, failed, cancelled
+        running, success, failed, cancelled
     }
 }

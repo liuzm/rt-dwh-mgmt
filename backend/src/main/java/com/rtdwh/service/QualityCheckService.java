@@ -100,6 +100,17 @@ public class QualityCheckService {
         return alertCount;
     }
 
+    /** Run one enabled quality rule by id. */
+    @Transactional
+    public int runCheck(Long ruleId) {
+        QualityRule rule = ruleRepository.findById(ruleId)
+                .orElseThrow(() -> new IllegalArgumentException("质量规则不存在: " + ruleId));
+        if (!Boolean.TRUE.equals(rule.getEnabled())) {
+            throw new IllegalStateException("质量规则未启用: " + ruleId);
+        }
+        return checkRule(rule);
+    }
+
     /**
      * Check a single quality rule.
      * Returns 1 if an alert was generated, 0 otherwise.

@@ -1,5 +1,6 @@
 package com.rtdwh.entity;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import jakarta.persistence.*;
 import lombok.Data;
 import lombok.NoArgsConstructor;
@@ -45,6 +46,7 @@ public class DatasourceConfig {
     private String username;
 
     @Column(nullable = false, length = 256)
+    @JsonProperty(access = JsonProperty.Access.WRITE_ONLY)
     private String passwordEncrypted;
 
     @Column(columnDefinition = "JSON")

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { PageContainer } from '@ant-design/pro-components';
 import {
   Card, Descriptions, Statistic, Row, Col, Tag, Button, Space,
@@ -212,7 +212,9 @@ const SyncTaskDetail: React.FC = () => {
       case 'draft':
         return [
           <Tooltip title="提交任务到 Flink 集群">{btn('start', '启动', <PlayCircleOutlined />, 'primary')}</Tooltip>,
-          <Tooltip title="编辑任务配置">{btn('edit', '编辑', <EditOutlined />)}</Tooltip>,
+          <Tooltip title="编辑任务配置">
+            <Button icon={<EditOutlined />} onClick={handleEdit}>编辑</Button>
+          </Tooltip>,
           <Popconfirm title="确认删除此任务？" onConfirm={handleDelete}>
             <Button danger icon={<DeleteOutlined />}>删除</Button>
           </Popconfirm>,
@@ -262,14 +264,6 @@ const SyncTaskDetail: React.FC = () => {
         return [];
     }
   };
-
-  // Handle edit button specially since it's not an API call
-  useEffect(() => {
-    if (actionLoading === 'edit') {
-      handleEdit();
-      setActionLoading('');
-    }
-  }, [actionLoading]);
 
   // ========================================================================
   // Parse checkpoint info

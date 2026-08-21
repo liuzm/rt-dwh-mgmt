@@ -5,12 +5,12 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import javax.crypto.Cipher;
-import javax.crypto.KeyGenerator;
 import javax.crypto.SecretKey;
 import javax.crypto.spec.GCMParameterSpec;
 import javax.crypto.spec.SecretKeySpec;
 import java.nio.ByteBuffer;
-import java.security.SecureRandom;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.util.Base64;
 
 @Slf4j
@@ -25,18 +25,23 @@ public class EncryptionUtil {
     private final SecretKey secretKey;
 
     public EncryptionUtil(@Value("${encryption.key}") String keyString) {
-        byte[] keyBytes = keyString.getBytes(java.nio.charset.StandardCharsets.UTF_8);
-        // Ensure key is at least 32 bytes for AES-256
-        if (keyBytes.length < 32) {
-            SecureRandom random = new SecureRandom();
-            byte[] padded = new byte[32];
-            System.arraycopy(keyBytes, 0, padded, 0, keyBytes.length);
-            random.nextBytes(padded);
-            keyBytes = padded;
-        } else if (keyBytes.length > 32) {
-            keyBytes = java.util.Arrays.copyOf(keyBytes, 32);
+        if (keyString == null || keyString.isBlank()) {
+            log.warn("ENCRYPTION_KEY is empty. Datasource passwords use an insecure "
+                    + "development key; configure a stable secret before production use.");
         }
-        this.secretKey = new SecretKeySpec(keyBytes, ALGORITHM);
+
+        // Derive exactly 256 deterministic bits from the configured passphrase.
+        // The previous implementation padded short keys with SecureRandom, which
+        // generated a different key after every application restart.
+        this.secretKey = new SecretKeySpec(sha256(keyString == null ? "" : keyString), ALGORITHM);
+    }
+
+    private byte[] sha256(String value) {
+        try {
+            return MessageDigest.getInstance("SHA-256").digest(value.getBytes(StandardCharsets.UTF_8));
+        } catch (Exception e) {
+            throw new IllegalStateException("Unable to initialize datasource encryption", e);
+        }
     }
 
     public String encrypt(String plainText) {
@@ -45,7 +50,7 @@ public class EncryptionUtil {
             cipher.init(Cipher.ENCRYPT_MODE, secretKey);
 
             byte[] iv = cipher.getIV();
-            byte[] encrypted = cipher.doFinal(plainText.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            byte[] encrypted = cipher.doFinal(plainText.getBytes(StandardCharsets.UTF_8));
 
             ByteBuffer buffer = ByteBuffer.allocate(iv.length + encrypted.length);
             buffer.put(iv);
@@ -59,6 +64,10 @@ public class EncryptionUtil {
     }
 
     public String decrypt(String encryptedText) {
+        if (encryptedText == null || encryptedText.isBlank()) {
+            return "";
+        }
+
         try {
             byte[] allBytes = Base64.getDecoder().decode(encryptedText);
             ByteBuffer buffer = ByteBuffer.wrap(allBytes);
@@ -72,10 +81,12 @@ public class EncryptionUtil {
             cipher.init(Cipher.DECRYPT_MODE, secretKey, new GCMParameterSpec(GCM_TAG_LENGTH, iv));
 
             byte[] decrypted = cipher.doFinal(encrypted);
-            return new String(decrypted, java.nio.charset.StandardCharsets.UTF_8);
+            return new String(decrypted, StandardCharsets.UTF_8);
         } catch (Exception e) {
             log.error("Decryption error: {}", e.getMessage());
-            throw new RuntimeException("Failed to decrypt", e);
+            throw new RuntimeException(
+                    "Failed to decrypt datasource password. ENCRYPTION_KEY does not match the key used to save it; "
+                            + "please re-enter and save the datasource password.", e);
         }
     }
 }

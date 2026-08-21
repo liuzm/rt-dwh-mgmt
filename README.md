@@ -194,6 +194,11 @@ helm install rtdwh-mgmt ./rtdwh-mgmt -n rtdwh --create-namespace
 | `DINGTALK_WEBHOOK` | 钉钉告警 Webhook | 可选 |
 | `WECOM_WEBHOOK` | 企微告警 Webhook | 可选 |
 | `ALERT_EMAIL_RECIPIENTS` | 告警邛件接收人 | 可选 |
+| `INIT_USERS_ENABLED` | 启用首次用户初始化 | `false` |
+| `INIT_ADMIN_PASSWORD` | 首次创建 admin 的密码 | 启用初始化时必填 |
+| `INIT_DEV_PASSWORD` / `INIT_GUEST_PASSWORD` | 首次创建 dev01/guest 的密码 | 启用初始化时必填 |
+
+首次部署如果登录提示“用户不存在: admin”，请在 `.env` 中设置 `INIT_USERS_ENABLED=true` 及三个初始化密码，启动一次后再将开关恢复为 `false`。初始化只会创建不存在的用户，不会覆盖已有用户密码。
 
 ## 测试
 

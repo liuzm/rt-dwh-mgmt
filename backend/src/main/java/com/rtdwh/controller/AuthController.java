@@ -20,6 +20,7 @@ import org.springframework.web.bind.annotation.*;
 
 import jakarta.validation.Valid;
 import java.util.List;
+import java.util.Objects;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -70,6 +71,7 @@ public class AuthController {
                 .map(r -> r.getRoleCode())
                 .collect(Collectors.toList());
         resp.setRole(String.join(",", roles));
+        resp.setPermissions(permissionCodes(user));
 
         return ApiResponse.success("登录成功", resp);
     }
@@ -97,7 +99,22 @@ public class AuthController {
                 .map(r -> r.getRoleCode())
                 .collect(Collectors.toList());
         resp.setRole(String.join(",", roles));
+        resp.setPermissions(permissionCodes(user));
 
         return ApiResponse.success(resp);
+    }
+
+    private List<String> permissionCodes(SysUser user) {
+        return user.getRoles().stream()
+                .filter(Objects::nonNull)
+                .flatMap(role -> role.getPermissions() == null
+                        ? java.util.stream.Stream.empty()
+                        : role.getPermissions().stream())
+                .filter(Objects::nonNull)
+                .map(permission -> permission.getPermCode())
+                .filter(Objects::nonNull)
+                .distinct()
+                .sorted()
+                .toList();
     }
 }

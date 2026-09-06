@@ -1,0 +1,430 @@
+.adhoc-query-page {
+  .adhoc-query-editor-card {
+    margin-bottom: 10px;
+    overflow: hidden;
+    border-color: #e5eaf0;
+    border-radius: 10px;
+    box-shadow: 0 2px 10px rgba(16, 24, 40, 0.04);
+  }
+
+  .adhoc-query-editor-card > .ant-card-head {
+    min-height: 48px;
+    padding-inline: 16px;
+    align-items: center;
+    border-bottom-color: #edf0f3;
+    background: linear-gradient(180deg, #ffffff 0%, #fcfdff 100%);
+  }
+
+  .adhoc-query-editor-card > .ant-card-head .ant-card-head-title {
+    padding-block: 12px;
+    color: #172033;
+    font-size: 14px;
+    font-weight: 600;
+  }
+
+  .adhoc-query-editor-card > .ant-card-head .ant-card-extra {
+    min-width: 0;
+    padding-block: 8px;
+  }
+
+  .adhoc-query-editor-card > .ant-card-body {
+    padding: 12px 16px 16px;
+  }
+}
+
+.adhoc-query-toolbar {
+  display: flex;
+  margin-bottom: 10px;
+  padding: 9px 10px;
+  align-items: center;
+  gap: 12px 16px;
+  border: 1px solid #e8edf3;
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.adhoc-query-toolbar-controls {
+  display: flex;
+  min-width: 0;
+  flex: 0 1 auto;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.adhoc-query-engine-select {
+  width: 210px;
+}
+
+.adhoc-query-database-select {
+  width: 150px;
+}
+
+.adhoc-query-limit-input {
+  width: 180px;
+}
+
+.adhoc-query-shortcut {
+  min-width: 260px;
+  margin-left: auto;
+  font-size: 12px;
+  line-height: 1.6;
+  text-align: right;
+}
+
+.adhoc-query-workspace {
+  --adhoc-query-workspace-height: clamp(320px, 43vh, 480px);
+
+  display: grid;
+  min-width: 0;
+  height: var(--adhoc-query-workspace-height);
+  grid-template-columns: minmax(280px, 304px) minmax(0, 1fr);
+  gap: 12px;
+}
+
+.adhoc-query-catalog-panel,
+.adhoc-query-editor-panel {
+  min-width: 0;
+  height: 100%;
+  overflow: hidden;
+  border: 1px solid var(--rtdwh-border);
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.adhoc-query-catalog-panel {
+  display: flex;
+  flex-direction: column;
+}
+
+.adhoc-query-panel-title {
+  display: flex;
+  height: 42px;
+  padding: 0 12px;
+  flex: 0 0 42px;
+  align-items: center;
+  gap: 8px;
+  border-bottom: 1px solid var(--rtdwh-border);
+  color: var(--rtdwh-heading);
+  background: #f8fafc;
+}
+
+.adhoc-query-tree-scroll {
+  min-height: 0;
+  padding: 8px;
+  flex: 1;
+  overflow: auto;
+}
+
+.adhoc-query-catalog-tree {
+  min-width: max-content;
+  color: var(--rtdwh-ink);
+  background: transparent;
+
+  .ant-tree-treenode {
+    width: 100%;
+    padding-block: 2px;
+  }
+
+  .ant-tree-node-content-wrapper {
+    min-width: 0;
+    padding: 3px 6px !important;
+    border-radius: 4px;
+    color: var(--rtdwh-ink) !important;
+    line-height: 24px;
+  }
+
+  .ant-tree-node-content-wrapper:hover {
+    background: #f5f8fb !important;
+  }
+
+  .ant-tree-node-content-wrapper.ant-tree-node-selected {
+    background: var(--rtdwh-primary-soft) !important;
+    color: #0958d9 !important;
+    font-weight: 500;
+  }
+
+  .ant-tree-node-content-wrapper.ant-tree-node-selected .adhoc-query-tree-layer {
+    border-color: #91caff;
+    color: #0958d9;
+    background: #ffffff;
+  }
+}
+
+.adhoc-query-tree-table-title,
+.adhoc-query-tree-column-title {
+  display: inline-flex;
+  min-width: 0;
+  max-width: 100%;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+}
+
+.adhoc-query-tree-table-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.adhoc-query-tree-layer {
+  padding: 0 5px;
+  flex: 0 0 auto;
+  border: 1px solid #b7d8f7;
+  border-radius: 3px;
+  color: #1677ff;
+  background: #f0f7ff;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 17px;
+}
+
+.adhoc-query-tree-column-title > span:last-child {
+  color: var(--rtdwh-subtle);
+  font-size: 11px;
+}
+
+.adhoc-query-editor-panel {
+  border-color: #303744;
+  background: #1e1e1e;
+  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.12);
+}
+
+.adhoc-query-metrics {
+  margin-bottom: 10px;
+}
+
+.adhoc-query-metric-card {
+  position: relative;
+  height: 100%;
+  overflow: hidden;
+  border-color: #e7ebf0;
+  border-radius: 9px;
+  box-shadow: 0 1px 6px rgba(16, 24, 40, 0.035);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+
+  &::before {
+    position: absolute;
+    z-index: 1;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    width: 3px;
+    background: #98a2b3;
+    content: '';
+  }
+
+  &:hover {
+    border-color: #d6e4ff;
+    box-shadow: 0 5px 14px rgba(16, 24, 40, 0.07);
+  }
+
+  &.is-success::before {
+    background: #52c41a;
+  }
+
+  &.is-duration::before {
+    background: #1677ff;
+  }
+
+  &.is-failed::before {
+    background: #ff4d4f;
+  }
+
+  &.is-budget::before {
+    background: #fa8c16;
+  }
+
+  &.is-queue::before {
+    background: #13c2c2;
+  }
+
+  &.is-capacity::before {
+    background: #722ed1;
+  }
+
+  > .ant-card-body {
+    display: flex;
+    min-height: 68px;
+    padding: 9px 13px 9px 15px;
+    align-items: center;
+  }
+
+  .ant-statistic {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .ant-statistic-title {
+    margin-bottom: 1px;
+    overflow: hidden;
+    color: #667085;
+    font-size: 12px;
+    line-height: 18px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .ant-statistic-content {
+    display: flex;
+    min-width: 0;
+    flex-wrap: wrap;
+    align-items: baseline;
+    column-gap: 4px;
+    color: #172033;
+    font-size: 22px;
+    font-weight: 650;
+    line-height: 1.15;
+  }
+
+  .ant-statistic-content-suffix {
+    margin-left: 0;
+    color: #475467;
+    font-size: 13px;
+    font-weight: 600;
+  }
+}
+
+.adhoc-query-metric-cap {
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: #f2f4f7;
+  color: #667085;
+  font-size: 10px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.adhoc-query-data-card {
+  overflow: hidden;
+  border-color: #e7ebf0;
+  border-radius: 10px;
+  box-shadow: 0 2px 9px rgba(16, 24, 40, 0.035);
+
+  > .ant-card-head {
+    min-height: 46px;
+    padding-inline: 16px;
+    border-bottom-color: #edf0f3;
+  }
+
+  > .ant-card-head .ant-card-head-title {
+    padding-block: 11px;
+    color: #172033;
+    font-size: 14px;
+    font-weight: 600;
+  }
+
+  > .ant-card-body {
+    padding: 12px 16px 15px;
+  }
+}
+
+.adhoc-query-result-card,
+.adhoc-query-cost-card {
+  margin-bottom: 10px;
+}
+
+.adhoc-query-result-alert {
+  margin-bottom: 10px;
+}
+
+.adhoc-query-result-stats {
+  margin-bottom: 10px;
+}
+
+.adhoc-query-table {
+  .ant-table-container {
+    overflow: hidden;
+    border: 1px solid #eef1f4;
+    border-radius: 8px;
+  }
+
+  .ant-table-thead > tr > th {
+    padding-top: 9px;
+    padding-bottom: 9px;
+    background: #f8fafc;
+    color: #344054;
+    font-size: 12px;
+    font-weight: 600;
+  }
+
+  .ant-table-tbody > tr > td {
+    color: #475467;
+  }
+
+  .ant-table-tbody > tr:hover > td {
+    background: #f7fbff !important;
+  }
+}
+
+@media (max-width: 1400px) {
+  .adhoc-query-toolbar {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .adhoc-query-toolbar-controls {
+    width: 100%;
+  }
+
+  .adhoc-query-shortcut {
+    min-width: 0;
+    margin-left: 0;
+    text-align: left;
+  }
+}
+
+@media (max-width: 900px) {
+  .adhoc-query-page .adhoc-query-editor-card > .ant-card-head .ant-card-head-wrapper {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .adhoc-query-page .adhoc-query-editor-card > .ant-card-head .ant-card-extra {
+    margin: 0 0 12px;
+  }
+
+  .adhoc-query-workspace {
+    height: auto;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .adhoc-query-catalog-panel {
+    height: 240px;
+  }
+
+  .adhoc-query-editor-panel {
+    height: 340px;
+  }
+}
+
+@media (max-width: 640px) {
+  .adhoc-query-page .adhoc-query-editor-card > .ant-card-body {
+    padding: 10px 12px 12px;
+  }
+
+  .adhoc-query-toolbar-controls {
+    display: grid;
+    width: 100%;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .adhoc-query-engine-select,
+  .adhoc-query-database-select,
+  .adhoc-query-limit-input {
+    width: 100%;
+  }
+
+  .adhoc-query-engine-select,
+  .adhoc-query-limit-input {
+    grid-column: 1 / -1;
+  }
+
+  .adhoc-query-metric-card > .ant-card-body {
+    min-height: 64px;
+    padding: 8px 10px 8px 13px;
+  }
+
+  .adhoc-query-metric-card .ant-statistic-content {
+    font-size: 20px;
+  }
+}

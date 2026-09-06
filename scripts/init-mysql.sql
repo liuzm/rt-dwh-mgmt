@@ -19,6 +19,9 @@ CREATE DATABASE IF NOT EXISTS rtdwh_paimon_meta
 -- The official MySQL image creates MYSQL_USER before executing init scripts.
 -- Keep the default deployment user able to initialize Paimon catalog tables.
 GRANT ALL PRIVILEGES ON rtdwh_paimon_meta.* TO 'rtdwh_admin'@'%';
+-- Flyway inspects session user variables before applying migrations.
+GRANT SELECT ON performance_schema.user_variables_by_thread TO 'rtdwh_admin'@'%';
+GRANT SELECT, RELOAD, SHOW DATABASES, REPLICATION SLAVE, REPLICATION CLIENT ON *.* TO 'rtdwh_admin'@'%';
 FLUSH PRIVILEGES;
 
 USE rtdwh_mgmt;
@@ -243,6 +246,26 @@ CREATE TABLE IF NOT EXISTS quality_alert (
   triggered_at TIMESTAMP
 );
 
+-- Every quality rule execution, including successful checks and engine errors.
+CREATE TABLE IF NOT EXISTS quality_check_run (
+  id BIGINT AUTO_INCREMENT PRIMARY KEY,
+  batch_id VARCHAR(64) NOT NULL,
+  rule_id BIGINT NOT NULL,
+  rule_name VARCHAR(100) NOT NULL,
+  trigger_type VARCHAR(20) NOT NULL,
+  engine VARCHAR(20) NOT NULL,
+  status VARCHAR(20) NOT NULL,
+  check_sql TEXT NOT NULL,
+  actual_value DOUBLE,
+  threshold_value DOUBLE,
+  duration_ms BIGINT,
+  error_message TEXT,
+  started_at TIMESTAMP NOT NULL,
+  finished_at TIMESTAMP,
+  INDEX idx_quality_run_batch (batch_id),
+  INDEX idx_quality_run_rule_time (rule_id, started_at)
+);
+
 -- AlertRule (matches entity)
 CREATE TABLE IF NOT EXISTS alert_rule (
   id BIGINT AUTO_INCREMENT PRIMARY KEY,
@@ -255,7 +278,7 @@ CREATE TABLE IF NOT EXISTS alert_rule (
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 );
 
--- AlertRecord (updated: removed FK to alert_config, matches entity)
+-- AlertRecord baseline. Flyway V4 adds evaluation and notification columns.
 CREATE TABLE IF NOT EXISTS alert_record (
   id BIGINT AUTO_INCREMENT PRIMARY KEY,
   rule_type VARCHAR(50) NOT NULL,
@@ -288,6 +311,10 @@ CREATE TABLE IF NOT EXISTS query_history (
   user_id BIGINT NOT NULL,
   sql_text TEXT NOT NULL,
   query_type ENUM('adhoc','report') NOT NULL,
+  query_engine VARCHAR(16) NOT NULL DEFAULT 'doris',
+  query_id VARCHAR(128),
+  scanned_rows BIGINT,
+  scanned_bytes BIGINT,
   result_row_count INT,
   duration_ms BIGINT,
   status ENUM('running','success','failed','cancelled') NOT NULL,
@@ -312,6 +339,25 @@ CREATE TABLE IF NOT EXISTS saved_query (
 
 -- Quartz tables (auto-created by Spring Boot when initialize-schema: always)
 
+CREATE TABLE IF NOT EXISTS operation_audit (
+  id BIGINT AUTO_INCREMENT PRIMARY KEY,
+  user_id BIGINT,
+  username VARCHAR(64) NOT NULL,
+  http_method VARCHAR(16) NOT NULL,
+  request_path VARCHAR(256) NOT NULL,
+  action VARCHAR(64) NOT NULL,
+  resource_type VARCHAR(64) NOT NULL,
+  resource_id VARCHAR(128),
+  client_ip VARCHAR(64),
+  success BOOLEAN NOT NULL,
+  response_status INT,
+  duration_ms BIGINT,
+  error_message TEXT,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  INDEX idx_audit_user_time (username, created_at),
+  INDEX idx_audit_resource_time (resource_type, created_at)
+);
+
 -- Insert initial permissions
 INSERT INTO sys_permission (perm_code, perm_name, resource_type, sort_order) VALUES
   ('task:create', '创建同步任务', 'api', 1),
@@ -323,4 +369,13 @@ INSERT INTO sys_permission (perm_code, perm_name, resource_type, sort_order) VAL
   ('report:create', '创建报表', 'api', 7),
   ('report:view', '查看报表', 'api', 8),
   ('alert:manage', '管理告警', 'api', 9),
-  ('settings:manage', '系统设置', 'api', 10);
+  ('settings:manage', '系统设置', 'api', 10),
+  ('datasource:view', '查看数据源', 'api', 11),
+  ('datasource:manage', '管理数据源', 'api', 12),
+  ('quality:view', '查看数据质量', 'api', 13),
+  ('quality:manage', '管理数据质量', 'api', 14),
+  ('lineage:view', '查看数据血缘', 'api', 15),
+  ('alert:view', '查看告警', 'api', 16),
+  ('settings:view', '查看系统状态', 'api', 17),
+  ('audit:view', '查看操作审计', 'api', 18)
+ON DUPLICATE KEY UPDATE perm_name = VALUES(perm_name), resource_type = VALUES(resource_type);

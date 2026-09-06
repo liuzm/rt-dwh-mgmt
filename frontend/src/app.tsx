@@ -79,11 +79,18 @@ export const layout: RunTimeLayoutConfig = ({ initialState }) => {
     // Keep the navigation visible on first load. Users can still collapse it
     // with the standard ProLayout toggle.
     defaultCollapsed: false,
-    siderWidth: 200,
+    siderWidth: 192,
     menu: {
       defaultOpenAll: true,
+      // 产品界面统一使用中文导航，不跟随浏览器语言切换，避免中英文混排。
+      locale: false,
     },
     contentWidth: 'Fluid',
+    contentStyle: {
+      minHeight: 'calc(100vh - 48px)',
+      padding: 0,
+      overflowAnchor: 'none',
+    },
     fixedHeader: true,
     fixSiderbar: true,
     currentUser: initialState?.currentUser,

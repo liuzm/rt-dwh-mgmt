@@ -1,6 +1,8 @@
 # Build outputs
 backend/target/
 frontend/dist/
+__pycache__/
+*.pyc
 
 # Umi auto-generated
 frontend/src/.umi/

@@ -45,8 +45,12 @@ declare namespace API {
     taskName: string;
     description?: string;
     taskType: 'cdc_sync' | 'etl' | 'materialized';
-    sourceConfigId: number;
-    targetConfigId: number;
+    scenarioCode?: string;
+    executionMode: 'continuous' | 'scheduled';
+    definitionStatus: 'draft' | 'published' | 'disabled';
+    publishedVersionId?: number;
+    sourceConfigId?: number;
+    targetConfigId?: number;
     flinkSql: string;
     syncStrategy: 'full_then_incremental' | 'incremental_only';
     tableMappings?: string;
@@ -199,18 +203,5 @@ declare namespace API {
     resolver?: string;
   }
 
-  interface MaintenanceLog {
-    id: number;
-    tableName: string;
-    paimonDb: string;
-    operation: 'compact' | 'expire_snapshots' | 'clean_orphan_files' | 'rollback';
-    triggerType: 'manual' | 'scheduled' | 'auto';
-    strategy?: string;
-    retainLast?: number;
-    status: 'running' | 'success' | 'failed';
-    startedAt: string;
-    finishedAt?: string;
-    durationMs?: number;
-    operator: string;
-  }
+  // MaintenanceLog is defined with the persisted recovery contract in src/typings.d.ts.
 }

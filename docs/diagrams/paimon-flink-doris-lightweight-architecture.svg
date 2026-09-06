@@ -1,0 +1,115 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 860" width="1200" height="860">
+  <style>text { font-family: "Helvetica Neue", Helvetica, Arial, "PingFang SC", "Microsoft YaHei", sans-serif; }</style>
+  <defs>
+    <marker id="arrow-blue" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0,10 3.5,0 7" fill="#2563eb"/></marker>
+    <marker id="arrow-green" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0,10 3.5,0 7" fill="#059669"/></marker>
+    <marker id="arrow-orange" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0,10 3.5,0 7" fill="#ea580c"/></marker>
+  </defs>
+  <rect width="1200" height="860" fill="#ffffff"/>
+  <text x="48" y="48" fill="#111827" font-size="24" font-weight="700">Paimon ＋ Flink 2.0＋ ＋ Doris 轻量实时数仓架构</text>
+  <text x="48" y="74" fill="#6b7280" font-size="13">Flink 负责实时写入，Paimon 负责统一存储，Doris 负责交互式查询，RT-DWH 负责管理与治理</text>
+  <rect x="40" y="96" width="820" height="118" rx="12" fill="#eff6ff" fill-opacity="0.55" stroke="#bfdbfe" stroke-width="1.2" stroke-dasharray="7,4"/>
+  <text x="56" y="118" fill="#2563eb" font-size="12" font-weight="700">01 · 数据源</text>
+  <rect x="88" y="132" width="190" height="62" rx="10" fill="#ffffff" stroke="#4479A1" stroke-width="1.5"/>
+  <circle cx="116" cy="160" r="17" fill="#4479A1"/>
+  <text x="116" y="165" text-anchor="middle" fill="#ffffff" font-size="10" font-weight="700">MYSQL</text>
+  <text x="142" y="161" text-anchor="start" fill="#111827" font-size="16" font-weight="700">MySQL</text>
+  <text x="142" y="182" text-anchor="start" fill="#6b7280" font-size="12">业务库与 Binlog</text>
+  <rect x="350" y="132" width="190" height="62" rx="10" fill="#ffffff" stroke="#336791" stroke-width="1.5"/>
+  <circle cx="378" cy="160" r="17" fill="#336791"/>
+  <text x="378" y="165" text-anchor="middle" fill="#ffffff" font-size="10" font-weight="700">PG</text>
+  <text x="404" y="161" text-anchor="start" fill="#111827" font-size="16" font-weight="700">PostgreSQL</text>
+  <text x="404" y="182" text-anchor="start" fill="#6b7280" font-size="12">业务库与 WAL</text>
+  <rect x="612" y="132" width="190" height="62" rx="10" fill="#ffffff" stroke="#6b7280" stroke-width="1.5"/>
+  <circle cx="640" cy="160" r="17" fill="#6b7280"/>
+  <text x="640" y="165" text-anchor="middle" fill="#ffffff" font-size="10" font-weight="700">MQ</text>
+  <text x="666" y="161" text-anchor="start" fill="#111827" font-size="16" font-weight="700">可选消息流</text>
+  <text x="666" y="182" text-anchor="start" fill="#6b7280" font-size="12">Kafka／Pulsar</text>
+  <rect x="40" y="240" width="820" height="118" rx="12" fill="#fff7ed" fill-opacity="0.65" stroke="#fed7aa" stroke-width="1.2" stroke-dasharray="7,4"/>
+  <text x="56" y="262" fill="#ea580c" font-size="12" font-weight="700">02 · 实时计算与写入</text>
+  <rect x="280" y="278" width="340" height="62" rx="10" fill="#ffffff" stroke="#ea580c" stroke-width="1.5"/>
+  <circle cx="308" cy="306" r="17" fill="#ea580c"/>
+  <text x="308" y="311" text-anchor="middle" fill="#ffffff" font-size="10" font-weight="700">FLINK</text>
+  <text x="334" y="307" text-anchor="start" fill="#111827" font-size="16" font-weight="700">Flink 2.0＋ ／ Flink CDC</text>
+  <text x="334" y="328" text-anchor="start" fill="#6b7280" font-size="12">Schema 演进 · 去重 · 聚合 · Checkpoint</text>
+  <rect x="40" y="384" width="820" height="146" rx="12" fill="#f0fdf4" fill-opacity="0.7" stroke="#bbf7d0" stroke-width="1.2" stroke-dasharray="7,4"/>
+  <text x="56" y="406" fill="#059669" font-size="12" font-weight="700">03 · 湖仓存储层</text>
+  <rect x="96" y="430" width="278" height="72" rx="10" fill="#ffffff" stroke="#059669" stroke-width="1.5"/>
+  <circle cx="124" cy="458" r="17" fill="#059669"/>
+  <text x="124" y="463" text-anchor="middle" fill="#ffffff" font-size="10" font-weight="700">META</text>
+  <text x="150" y="459" text-anchor="start" fill="#111827" font-size="16" font-weight="700">Paimon Catalog</text>
+  <text x="150" y="480" text-anchor="start" fill="#6b7280" font-size="12">Filesystem／HMS／JDBC／REST</text>
+  <rect x="510" y="430" width="278" height="72" rx="10" fill="#ffffff" stroke="#16a34a" stroke-width="1.5"/>
+  <circle cx="538" cy="458" r="17" fill="#16a34a"/>
+  <text x="538" y="463" text-anchor="middle" fill="#ffffff" font-size="10" font-weight="700">DATA</text>
+  <text x="564" y="459" text-anchor="start" fill="#111827" font-size="16" font-weight="700">Paimon Warehouse</text>
+  <text x="564" y="480" text-anchor="start" fill="#6b7280" font-size="12">MinIO／S3／HDFS · Parquet／ORC</text>
+  <rect x="40" y="556" width="820" height="118" rx="12" fill="#faf5ff" fill-opacity="0.65" stroke="#ddd6fe" stroke-width="1.2" stroke-dasharray="7,4"/>
+  <text x="56" y="578" fill="#7c3aed" font-size="12" font-weight="700">04 · 交互式查询层</text>
+  <rect x="280" y="594" width="340" height="62" rx="10" fill="#ffffff" stroke="#7c3aed" stroke-width="1.5"/>
+  <circle cx="308" cy="622" r="17" fill="#7c3aed"/>
+  <text x="308" y="627" text-anchor="middle" fill="#ffffff" font-size="10" font-weight="700">DORIS</text>
+  <text x="334" y="623" text-anchor="start" fill="#111827" font-size="16" font-weight="700">Apache Doris FE／BE</text>
+  <text x="334" y="644" text-anchor="start" fill="#6b7280" font-size="12">Paimon Catalog · 向量化执行 · 并行扫描</text>
+  <rect x="40" y="700" width="820" height="100" rx="12" fill="#f9fafb" stroke="#d1d5db" stroke-width="1.2" stroke-dasharray="7,4"/>
+  <text x="56" y="722" fill="#6b7280" font-size="12" font-weight="700">05 · 数据消费</text>
+  <rect x="96" y="730" width="200" height="64" rx="10" fill="#ffffff" stroke="#2563eb" stroke-width="1.5"/>
+  <text x="196.0" y="759" text-anchor="middle" fill="#111827" font-size="16" font-weight="700">SQL 工作台</text>
+  <text x="196.0" y="780" text-anchor="middle" fill="#6b7280" font-size="12">即席查询与导出</text>
+  <rect x="350" y="730" width="200" height="64" rx="10" fill="#ffffff" stroke="#2563eb" stroke-width="1.5"/>
+  <text x="450.0" y="759" text-anchor="middle" fill="#111827" font-size="16" font-weight="700">BI／报表</text>
+  <text x="450.0" y="780" text-anchor="middle" fill="#6b7280" font-size="12">看板与指标</text>
+  <rect x="604" y="730" width="200" height="64" rx="10" fill="#ffffff" stroke="#2563eb" stroke-width="1.5"/>
+  <text x="704.0" y="759" text-anchor="middle" fill="#111827" font-size="16" font-weight="700">API 服务</text>
+  <text x="704.0" y="780" text-anchor="middle" fill="#6b7280" font-size="12">在线数据服务</text>
+  <rect x="900" y="96" width="260" height="704" rx="14" fill="#fff7ed" fill-opacity="0.5" stroke="#fdba74" stroke-width="1.5" stroke-dasharray="8,5"/>
+  <text x="920" y="124" fill="#9a3412" font-size="13" font-weight="700">RT-DWH 管理控制面</text>
+  <rect x="928" y="150" width="204" height="74" rx="10" fill="#ffffff" stroke="#ea580c" stroke-width="1.5"/>
+  <text x="1030.0" y="179" text-anchor="middle" fill="#111827" font-size="16" font-weight="700">任务编排</text>
+  <text x="1030.0" y="200" text-anchor="middle" fill="#6b7280" font-size="12">创建 · 发布 · 暂停 · 恢复</text>
+  <rect x="928" y="246" width="204" height="74" rx="10" fill="#ffffff" stroke="#ea580c" stroke-width="1.5"/>
+  <text x="1030.0" y="275" text-anchor="middle" fill="#111827" font-size="16" font-weight="700">SQL 安全网关</text>
+  <text x="1030.0" y="296" text-anchor="middle" fill="#6b7280" font-size="12">只读校验 · RBAC · 限流</text>
+  <rect x="928" y="342" width="204" height="74" rx="10" fill="#ffffff" stroke="#ea580c" stroke-width="1.5"/>
+  <text x="1030.0" y="371" text-anchor="middle" fill="#111827" font-size="16" font-weight="700">元数据与血缘</text>
+  <text x="1030.0" y="392" text-anchor="middle" fill="#6b7280" font-size="12">Catalog · Schema · Snapshot</text>
+  <rect x="928" y="438" width="204" height="74" rx="10" fill="#ffffff" stroke="#ea580c" stroke-width="1.5"/>
+  <text x="1030.0" y="467" text-anchor="middle" fill="#111827" font-size="16" font-weight="700">质量与维护</text>
+  <text x="1030.0" y="488" text-anchor="middle" fill="#6b7280" font-size="12">规则 · Compact · Expire</text>
+  <rect x="928" y="534" width="204" height="74" rx="10" fill="#ffffff" stroke="#ea580c" stroke-width="1.5"/>
+  <text x="1030.0" y="563" text-anchor="middle" fill="#111827" font-size="16" font-weight="700">监控与告警</text>
+  <text x="1030.0" y="584" text-anchor="middle" fill="#6b7280" font-size="12">Job · Lag · Checkpoint</text>
+  <rect x="928" y="630" width="204" height="74" rx="10" fill="#ffffff" stroke="#ea580c" stroke-width="1.5"/>
+  <text x="1030.0" y="659" text-anchor="middle" fill="#111827" font-size="16" font-weight="700">配置与权限</text>
+  <text x="1030.0" y="680" text-anchor="middle" fill="#6b7280" font-size="12">环境 · 密钥 · 审计</text>
+  <path d="M183 194 V226 H450 V278" fill="none" stroke="#2563eb" stroke-width="2.2" marker-end="url(#arrow-blue)"/>
+  <path d="M445 194 V278" fill="none" stroke="#2563eb" stroke-width="2.2" marker-end="url(#arrow-blue)"/>
+  <path d="M707 194 V226 H450" fill="none" stroke="#2563eb" stroke-width="2.2" marker-end="url(#arrow-blue)"/>
+  <rect x="402" y="213" width="96" height="22" rx="11" fill="#ffffff" opacity="0.96"/>
+  <text x="450" y="228" text-anchor="middle" fill="#2563eb" font-size="12" font-weight="600">CDC／事件流</text>
+  <path d="M450 340 V414 H649 V430" fill="none" stroke="#2563eb" stroke-width="2.2" marker-end="url(#arrow-blue)"/>
+  <rect x="500" y="381" width="96" height="22" rx="11" fill="#ffffff" opacity="0.96"/>
+  <text x="548" y="396" text-anchor="middle" fill="#2563eb" font-size="12" font-weight="600">持续写入</text>
+  <path d="M510 466 H374" fill="none" stroke="#059669" stroke-width="1.8" stroke-dasharray="5,3" marker-end="url(#arrow-green)"/>
+  <rect x="394" y="443" width="96" height="22" rx="11" fill="#ffffff" opacity="0.96"/>
+  <text x="442" y="458" text-anchor="middle" fill="#059669" font-size="12" font-weight="600">提交元数据</text>
+  <path d="M235 502 V546 H450 V594" fill="none" stroke="#059669" stroke-width="1.8" marker-end="url(#arrow-green)"/>
+  <path d="M649 502 V546 H450" fill="none" stroke="#2563eb" stroke-width="2.2" marker-end="url(#arrow-blue)"/>
+  <rect x="402" y="533" width="96" height="22" rx="11" fill="#ffffff" opacity="0.96"/>
+  <text x="450" y="548" text-anchor="middle" fill="#059669" font-size="12" font-weight="600">Catalog＋数据文件</text>
+  <path d="M450 656 V714 H196 V730" fill="none" stroke="#2563eb" stroke-width="2.2" marker-end="url(#arrow-blue)"/>
+  <path d="M450 656 V730" fill="none" stroke="#2563eb" stroke-width="2.2" marker-end="url(#arrow-blue)"/>
+  <path d="M450 656 V714 H704 V730" fill="none" stroke="#2563eb" stroke-width="2.2" marker-end="url(#arrow-blue)"/>
+  <rect x="402" y="691" width="96" height="22" rx="11" fill="#ffffff" opacity="0.96"/>
+  <text x="450" y="706" text-anchor="middle" fill="#2563eb" font-size="12" font-weight="600">查询结果</text>
+  <path d="M928 187 H886 V309 H620" fill="none" stroke="#ea580c" stroke-width="1.7" marker-end="url(#arrow-orange)"/>
+  <path d="M928 283 H884 V625 H620" fill="none" stroke="#ea580c" stroke-width="1.7" marker-end="url(#arrow-orange)"/>
+  <path d="M928 379 H882 V466 H788" fill="none" stroke="#ea580c" stroke-width="1.7" marker-end="url(#arrow-orange)"/>
+  <path d="M928 475 H878 V486 H788" fill="none" stroke="#ea580c" stroke-width="1.7" marker-end="url(#arrow-orange)"/>
+  <path d="M928 571 H872 V330 H620" fill="none" stroke="#ea580c" stroke-width="1.7" stroke-dasharray="4,2" marker-end="url(#arrow-orange)"/>
+  <g transform="translate(900,748)">
+    <line x1="0" y1="8" x2="34" y2="8" stroke="#2563eb" stroke-width="2.2" marker-end="url(#arrow-blue)"/><text x="44" y="12" fill="#6b7280" font-size="11">主数据流</text>
+    <line x1="0" y1="30" x2="34" y2="30" stroke="#059669" stroke-width="1.8" marker-end="url(#arrow-green)"/><text x="44" y="34" fill="#6b7280" font-size="11">元数据读取</text>
+    <line x1="0" y1="52" x2="34" y2="52" stroke="#ea580c" stroke-width="1.7" marker-end="url(#arrow-orange)"/><text x="44" y="56" fill="#6b7280" font-size="11">控制与治理</text>
+  </g>
+</svg>

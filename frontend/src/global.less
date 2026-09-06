@@ -5,19 +5,25 @@
   --rtdwh-success: #52c41a;
   --rtdwh-warning: #faad14;
   --rtdwh-danger: #ff4d4f;
-  --rtdwh-ink: #333333;
+  --rtdwh-ink: #344054;
   --rtdwh-heading: #1f2937;
-  --rtdwh-muted: #666666;
-  --rtdwh-subtle: #8c8c8c;
+  --rtdwh-muted: #667085;
+  --rtdwh-subtle: #8a94a6;
   --rtdwh-surface: #ffffff;
-  --rtdwh-canvas: #f0f2f5;
-  --rtdwh-border: #f0f0f0;
+  --rtdwh-canvas: #f4f6f8;
+  --rtdwh-border: #e8ecf1;
   --rtdwh-sider: #001529;
+}
+
+html {
+  overflow-y: scroll;
+  scrollbar-gutter: stable;
 }
 
 html,
 body,
 #root {
+  height: 100%;
   min-height: 100%;
   background: var(--rtdwh-canvas);
 }
@@ -37,6 +43,17 @@ body {
 .ant-pro-layout .ant-layout,
 .ant-pro-layout .ant-layout-content {
   background: var(--rtdwh-canvas);
+}
+
+.ant-pro-layout,
+.ant-pro-layout .ant-pro-layout-container,
+.ant-pro-layout .ant-layout-content {
+  min-height: 100vh;
+}
+
+.ant-pro-layout .ant-layout-content {
+  min-width: 0;
+  overflow-anchor: none;
 }
 
 .ant-pro-sider.ant-layout-sider,
@@ -63,18 +80,18 @@ body {
 }
 
 .ant-pro-sider .ant-menu {
-  padding: 8px !important;
+  padding: 7px !important;
 }
 
 .ant-pro-sider .ant-menu-item,
 .ant-pro-sider .ant-menu-submenu-title {
-  min-height: 36px;
-  height: 36px;
+  min-height: 34px;
+  height: 34px;
   margin: 2px 0;
   padding-inline: 12px !important;
   border-radius: 4px;
   font-size: 13px;
-  line-height: 36px;
+  line-height: 34px;
 }
 
 .ant-pro-sider .ant-menu-submenu .ant-menu-item {
@@ -113,13 +130,13 @@ body {
 
 /* Page rhythm */
 .ant-pro-page-container .ant-pro-page-container-warp-page-header {
-  padding: 16px 24px 8px;
+  min-height: 50px;
+  padding: 11px 20px 5px;
   background: transparent;
 }
 
 .ant-pro-page-container .ant-page-header-breadcrumb {
-  margin-bottom: 8px;
-  font-size: 13px;
+  display: none;
 }
 
 .ant-pro-page-container .ant-breadcrumb,
@@ -131,9 +148,29 @@ body {
 
 .ant-pro-page-container .ant-page-header-heading-title {
   color: var(--rtdwh-heading);
-  font-size: 20px;
-  font-weight: 600;
-  line-height: 1.4;
+  font-size: 19px;
+  font-weight: 650;
+  line-height: 30px;
+}
+
+.ant-pro-page-container .ant-page-header-heading {
+  min-height: 32px;
+  align-items: center;
+}
+
+.ant-pro-page-container .ant-page-header-heading-left {
+  min-width: 0;
+  align-items: center;
+}
+
+.ant-pro-page-container .ant-page-header-heading-sub-title {
+  max-width: min(56vw, 760px);
+  overflow: hidden;
+  color: var(--rtdwh-muted);
+  font-size: 12px;
+  line-height: 20px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .ant-pro-page-container .ant-page-header-heading-extra {
@@ -141,40 +178,42 @@ body {
 }
 
 .ant-pro-page-container-children-container {
-  padding: 8px 24px 24px !important;
+  min-height: calc(100vh - 98px);
+  padding: 6px 20px 20px !important;
+  overflow-anchor: none;
 }
 
 /* Cards and statistics */
 .ant-card {
-  border: 1px solid var(--rtdwh-border);
-  border-radius: 8px;
+  border: 1px solid #e6ebf0;
+  border-radius: 10px;
   background: var(--rtdwh-surface);
-  box-shadow: none;
+  box-shadow: 0 1px 3px rgba(16, 24, 40, 0.035);
 }
 
 .ant-card .ant-card-head {
-  min-height: 46px;
-  padding-inline: 20px;
+  min-height: 42px;
+  padding-inline: 16px;
   border-color: var(--rtdwh-border);
 }
 
 .ant-card .ant-card-head-title {
-  padding-block: 12px;
+  padding-block: 10px;
   color: var(--rtdwh-heading);
-  font-size: 15px;
+  font-size: 14px;
   font-weight: 600;
 }
 
 .ant-card .ant-card-body {
-  padding: 16px 20px;
+  padding: 14px 16px;
 }
 
 .ant-card-small > .ant-card-head {
-  min-height: 40px;
+  min-height: 36px;
 }
 
 .ant-card-small > .ant-card-body {
-  padding: 12px 16px;
+  padding: 10px 12px;
 }
 
 .ant-statistic-title {
@@ -184,7 +223,7 @@ body {
 }
 
 .ant-statistic-content {
-  font-size: 28px;
+  font-size: 24px;
   font-weight: 700;
   line-height: 1.2;
 }
@@ -196,21 +235,21 @@ body {
 
 .rtdwh-metric-card .ant-card-body {
   display: flex;
-  min-height: 108px;
+  min-height: 84px;
   align-items: center;
-  padding: 18px 20px;
+  padding: 12px 16px;
 }
 
 .rtdwh-metric-icon {
   display: inline-flex;
-  width: 42px;
-  height: 42px;
-  margin-right: 14px;
-  flex: 0 0 42px;
+  width: 38px;
+  height: 38px;
+  margin-right: 11px;
+  flex: 0 0 38px;
   align-items: center;
   justify-content: center;
   border-radius: 8px;
-  font-size: 20px;
+  font-size: 18px;
 }
 
 .rtdwh-metric-card .ant-statistic-title {
@@ -247,16 +286,16 @@ body {
 }
 
 .ant-table-wrapper .ant-table-thead > tr > th {
-  padding: 10px 12px;
+  padding: 8px 10px;
   border-color: var(--rtdwh-border);
-  background: #fafafa;
+  background: #f8fafc;
   color: #344054;
   font-size: 13px;
   font-weight: 600;
 }
 
 .ant-table-wrapper .ant-table-tbody > tr > td {
-  padding: 10px 12px;
+  padding: 8px 10px;
   border-color: var(--rtdwh-border);
 }
 
@@ -265,7 +304,7 @@ body {
 }
 
 .ant-table-wrapper .ant-pagination {
-  margin-block: 16px 0;
+  margin-block: 12px 0;
 }
 
 /* Inputs, buttons, tabs and status labels */
@@ -281,12 +320,32 @@ body {
 }
 
 .ant-btn:not(.ant-btn-sm):not(.ant-btn-lg),
-.ant-input:not(textarea),
 .ant-input-affix-wrapper,
 .ant-input-number,
 .ant-picker,
 .ant-select-single:not(.ant-select-customize-input) .ant-select-selector {
   min-height: 32px;
+}
+
+/*
+ * Affix inputs (for example Input.Search with allowClear) contain a nested
+ * .ant-input. Giving that inner input the same 32px minimum height as its
+ * wrapper makes the text overflow vertically. Keep the height on the wrapper
+ * and let the nested input use Ant Design's intrinsic line box instead.
+ */
+.ant-input-affix-wrapper > input.ant-input {
+  min-height: 0;
+}
+
+/* Preserve the joined shape of Input.Search after the global radius reset. */
+.ant-input-search .ant-input-affix-wrapper {
+  border-start-end-radius: 0 !important;
+  border-end-end-radius: 0 !important;
+}
+
+.ant-input-search .ant-input-group-addon .ant-input-search-button {
+  border-start-start-radius: 0 !important;
+  border-end-start-radius: 0 !important;
 }
 
 .ant-btn {
@@ -344,12 +403,12 @@ body {
 }
 
 .ant-tabs-nav {
-  margin-bottom: 16px !important;
+  margin-bottom: 12px !important;
 }
 
 .ant-tabs-tab {
-  padding: 8px 4px 10px !important;
-  font-size: 14px;
+  padding: 7px 3px 8px !important;
+  font-size: 13px;
 }
 
 .ant-tabs-ink-bar {
@@ -367,20 +426,246 @@ body {
 }
 
 .ant-modal .ant-modal-header {
-  margin-bottom: 18px;
+  margin-bottom: 12px;
 }
 
 .ant-modal .ant-modal-title {
-  font-size: 16px;
+  font-size: 15px;
   font-weight: 600;
+}
+
+.ant-form-vertical .ant-form-item {
+  margin-bottom: 14px;
+}
+
+.ant-form-vertical .ant-form-item .ant-form-item-label {
+  padding-bottom: 4px;
+}
+
+.ant-alert {
+  padding: 8px 12px;
+  border-radius: 8px;
+}
+
+.ant-empty-normal {
+  margin-block: 24px;
 }
 
 .rtdwh-toolbar {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.rtdwh-page-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+/* Route chunks render into a stable skeleton instead of collapsing the content area. */
+.rtdwh-route-loading {
+  min-height: calc(100vh - 48px);
+  color: transparent;
+  background: var(--rtdwh-canvas);
+  overflow: hidden;
+}
+
+.rtdwh-route-loading-header {
+  display: flex;
+  min-height: 50px;
+  padding: 11px 20px 5px;
+  align-items: center;
   gap: 12px;
-  margin-bottom: 16px;
+}
+
+.rtdwh-route-loading-body {
+  min-height: calc(100vh - 98px);
+  padding: 6px 20px 20px;
+}
+
+.rtdwh-route-loading-toolbar,
+.rtdwh-route-loading-card {
+  border: 1px solid #e6ebf0;
+  border-radius: 10px;
+  background: #fff;
+}
+
+.rtdwh-route-loading-toolbar {
+  display: flex;
+  min-height: 56px;
+  margin-bottom: 12px;
+  padding: 11px 16px;
+  align-items: center;
+  gap: 8px;
+}
+
+.rtdwh-route-loading-card {
+  min-height: 260px;
+  padding: 16px;
+}
+
+.rtdwh-loading-line {
+  display: block;
+  width: 100%;
+  height: 12px;
+  margin-bottom: 14px;
+  border-radius: 5px;
+  background: linear-gradient(90deg, #f0f2f5 25%, #f8fafc 37%, #f0f2f5 63%);
+  background-size: 400% 100%;
+  animation: rtdwh-loading-shimmer 1.4s ease infinite;
+}
+
+.rtdwh-loading-line.is-title {
+  width: 130px;
+  height: 20px;
+  margin: 0;
+}
+
+.rtdwh-loading-line.is-subtitle {
+  width: 280px;
+  margin: 0;
+}
+
+.rtdwh-loading-line.is-control {
+  width: 180px;
+  height: 30px;
+  margin: 0;
+}
+
+.rtdwh-loading-line.is-short {
+  width: 110px;
+}
+
+.rtdwh-loading-line.is-card-title {
+  width: 120px;
+  height: 16px;
+  margin-bottom: 24px;
+}
+
+.rtdwh-loading-line.is-medium {
+  width: 68%;
+}
+
+@keyframes rtdwh-loading-shimmer {
+  0% { background-position: 100% 50%; }
+  100% { background-position: 0 50%; }
+}
+
+.rtdwh-clickable-card {
+  cursor: pointer;
+}
+
+.rtdwh-quick-actions {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.rtdwh-quick-action {
+  display: flex;
+  min-width: 0;
+  min-height: 72px;
+  padding: 14px 16px;
+  align-items: center;
+  gap: 12px;
+  border: 1px solid var(--rtdwh-border);
+  border-radius: 8px;
+  color: var(--rtdwh-ink);
+  background: #fafafa;
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 0.2s ease, background 0.2s ease;
+}
+
+.rtdwh-quick-action:hover {
+  border-color: #91caff;
+  background: var(--rtdwh-primary-soft);
+}
+
+.rtdwh-quick-action > span:first-child {
+  display: inline-flex;
+  width: 38px;
+  height: 38px;
+  flex: 0 0 38px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  color: var(--rtdwh-primary);
+  font-size: 18px;
+  background: #e6f4ff;
+}
+
+.rtdwh-quick-action > span:last-child {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.rtdwh-quick-action b {
+  color: var(--rtdwh-heading);
+  font-size: 13px;
+}
+
+.rtdwh-quick-action small {
+  overflow: hidden;
+  color: var(--rtdwh-subtle);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rtdwh-dashboard-side-card {
+  height: 100%;
+}
+
+.rtdwh-alert-item {
+  cursor: pointer;
+}
+
+.rtdwh-alert-item:hover {
+  background: #fafafa;
+}
+
+.rtdwh-list-time {
+  margin-top: 3px;
+  color: var(--rtdwh-subtle);
+  font-size: 11px;
+}
+
+.rtdwh-foundation-score {
+  text-align: center;
+}
+
+.rtdwh-capability-summary {
+  display: flex;
+  min-height: 88px;
+  padding: 12px;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 5px;
+  border: 1px solid var(--rtdwh-border);
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.rtdwh-capability-summary:hover {
+  border-color: #91caff;
+}
+
+.rtdwh-capability-summary > span {
+  color: var(--rtdwh-muted);
+  font-size: 12px;
+}
+
+.rtdwh-capability-summary > b {
+  color: var(--rtdwh-heading);
+  font-size: 18px;
 }
 
 .rtdwh-code-panel {
@@ -436,7 +721,7 @@ body {
 
 /* System settings and dependency diagnostics */
 .settings-page .settings-section-card + .settings-section-card {
-  margin-top: 16px;
+  margin-top: 12px;
 }
 
 .settings-page .ant-descriptions-item {
@@ -462,6 +747,75 @@ body {
 
 .settings-config-footer .ant-btn {
   margin-left: auto;
+}
+
+.settings-paimon-card .ant-card-body {
+  padding-bottom: 14px;
+}
+
+.settings-paimon-note {
+  margin-bottom: 14px;
+  border-color: #bae0ff;
+  border-radius: 8px;
+  background: #f5faff;
+}
+
+.settings-paimon-note .ant-alert-message {
+  color: var(--rtdwh-heading);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.settings-paimon-note .ant-alert-description {
+  color: var(--rtdwh-muted);
+  font-size: 12px;
+}
+
+.settings-storage-path {
+  display: flex;
+  margin-top: 2px;
+  padding: 10px 12px;
+  align-items: stretch;
+  border: 1px solid var(--rtdwh-border);
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.settings-storage-path > span {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  color: var(--rtdwh-heading);
+  text-align: center;
+}
+
+.settings-storage-path small {
+  margin-top: 2px;
+  color: var(--rtdwh-subtle);
+  font-size: 11px;
+}
+
+.settings-storage-path > i {
+  display: inline-flex;
+  padding: 0 10px;
+  align-items: center;
+  color: #98a2b3;
+  font-style: normal;
+}
+
+@media (max-width: 800px) {
+  .settings-storage-path {
+    display: grid;
+    gap: 5px;
+  }
+
+  .settings-storage-path > i {
+    justify-content: center;
+    transform: rotate(90deg);
+  }
 }
 
 .settings-check-time {
@@ -951,11 +1305,11 @@ body {
 
 @media (max-width: 768px) {
   .ant-pro-page-container .ant-pro-page-container-warp-page-header {
-    padding: 12px 12px 6px;
+    padding: 9px 12px 4px;
   }
 
   .ant-pro-page-container-children-container {
-    padding: 6px 12px 16px !important;
+    padding: 5px 12px 14px !important;
   }
 
   .ant-card .ant-card-head,
@@ -964,8 +1318,23 @@ body {
   }
 
   .rtdwh-metric-card .ant-card-body {
-    min-height: 92px;
-    padding: 14px;
+    min-height: 76px;
+    padding: 10px 12px;
+  }
+
+  .rtdwh-page-toolbar > .ant-input,
+  .rtdwh-page-toolbar > .ant-input-affix-wrapper,
+  .rtdwh-page-toolbar > .ant-picker,
+  .rtdwh-page-toolbar > .ant-select {
+    width: 100% !important;
+  }
+
+  .rtdwh-page-toolbar > .ant-btn {
+    flex: 1 1 auto;
+  }
+
+  .rtdwh-quick-actions {
+    grid-template-columns: 1fr;
   }
 
   .settings-config-footer .ant-btn {
@@ -975,6 +1344,35 @@ body {
 
   .settings-page .ant-card-extra .settings-check-time {
     display: none;
+  }
+
+  .rtdwh-route-loading-header {
+    padding: 9px 12px 4px;
+  }
+
+  .rtdwh-route-loading-body {
+    padding: 5px 12px 14px;
+  }
+
+  .rtdwh-loading-line.is-subtitle {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}
+
+@media (min-width: 769px) and (max-width: 1200px) {
+  .rtdwh-quick-actions {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
@@ -1036,4 +1434,14 @@ body {
   .rtdwh-login-brand h2 {
     font-size: 27px;
   }
+}
+
+// Evidence views use light surfaces even with the dark navigation theme.
+.rtdwh-evidence-surface {
+  .ant-alert-info { background: #eff8ff; border-color: #b2ddff; }
+  .ant-alert-warning { background: #fffaeb; border-color: #fedf89; }
+  .ant-alert-error { background: #fef3f2; border-color: #fecdca; }
+  .ant-alert-success { background: #ecfdf3; border-color: #abefc6; }
+  .ant-alert-message, .ant-alert-description { color: #344054; }
+  .ant-descriptions-item-content { overflow-wrap: anywhere; }
 }

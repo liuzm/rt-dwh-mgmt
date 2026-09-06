@@ -1,0 +1,63 @@
+.flink-job-scaling-card {
+  margin-bottom: 16px;
+  overflow: hidden;
+}
+
+.flink-job-scaling-alert {
+  margin-bottom: 16px;
+}
+
+.flink-job-scaling-metric {
+  min-height: 92px;
+  padding: 16px;
+  border: 1px solid var(--rtdwh-border);
+  border-radius: 8px;
+  background: var(--rtdwh-surface, #fff);
+}
+
+.flink-job-scaling-metric.is-current {
+  border-color: #91caff;
+  background: #f0f7ff;
+}
+
+.flink-job-scaling-summary {
+  margin-top: 16px;
+  padding: 12px 16px 0;
+  border-radius: 8px;
+  background: var(--rtdwh-soft, #fafafa);
+}
+
+.flink-job-scaling-table {
+  margin-top: 16px;
+  border: 1px solid var(--rtdwh-border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.flink-job-vertex-name {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.flink-job-vertex-name .ant-typography {
+  margin: 0;
+}
+
+.flink-job-scaling-footer {
+  margin-top: 12px;
+  text-align: right;
+}
+
+.flink-job-scaling-modal-alert,
+.flink-job-scaling-capacity-warning {
+  margin-bottom: 16px;
+}
+
+@media (max-width: 576px) {
+  .flink-job-scaling-card .ant-card-extra {
+    margin-top: 10px;
+    margin-left: 0;
+  }
+}

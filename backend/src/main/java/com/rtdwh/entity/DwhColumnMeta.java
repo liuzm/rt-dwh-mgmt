@@ -28,8 +28,10 @@ public class DwhColumnMeta {
     @Column(nullable = false, length = 128)
     private String columnName;
 
-    @Column(nullable = false, length = 64)
+    @Column(nullable = false, columnDefinition = "TEXT")
     private String columnType;
+
+    private Long engineFieldId;
 
     @Column(length = 512)
     private String businessComment;

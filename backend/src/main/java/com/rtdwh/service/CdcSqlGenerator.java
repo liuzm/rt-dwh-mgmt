@@ -53,24 +53,34 @@ public class CdcSqlGenerator {
     /**
      * Generate CDC SQL for a sync task based on its table mappings.
      */
-    public String generateCdcSql(SyncTask task, DatasourceConfig sourceConfig, DatasourceConfig targetConfig) {
+    public String generateReleaseSql(SyncTask task, DatasourceConfig source) {
+        String sql = generateCdcSql(task, source);
+        sql = sql.replaceAll("(?i)('jdbc\\.password'\\s*=\\s*)'(?:''|[^'])*'", "$1'__RTDWH_PAIMON_CREDENTIAL__'");
+        return sql.replaceAll("(?i)('password'\\s*=\\s*)'(?:''|[^'])*'", "$1'__RTDWH_SOURCE_CREDENTIAL__'");
+    }
+
+    public String bindReleaseCredentials(String template, DatasourceConfig source) {
+        if (template == null || !template.contains("'__RTDWH_SOURCE_CREDENTIAL__'")) {
+            throw new IllegalArgumentException("CDC 发布版本缺少受控凭证引用，请重新发布");
+        }
+        return template.replace("'__RTDWH_SOURCE_CREDENTIAL__'", "'" + escape(encryptionUtil.decrypt(source.getPasswordEncrypted())) + "'")
+                .replace("'__RTDWH_PAIMON_CREDENTIAL__'", "'" + escape(paimonJdbcPassword) + "'");
+    }
+
+    public String generateCdcSql(SyncTask task, DatasourceConfig sourceConfig) {
         List<Map<String, String>> mappings = parseTableMappings(task.getTableMappings());
         if (mappings.isEmpty()) {
             throw new IllegalArgumentException("表映射配置为空");
         }
-        if (sourceConfig == null || targetConfig == null) {
-            throw new IllegalArgumentException("源/目标数据源配置不存在");
-        }
-        if (targetConfig.getDbType() != DbType.paimon) {
-            throw new IllegalArgumentException("CDC 目标数据源必须是 Paimon");
-        }
+        if (sourceConfig == null) throw new IllegalArgumentException("源数据源配置不存在");
 
         StringBuilder sql = new StringBuilder();
         sql.append("-- Flink CDC 同步任务: ").append(task.getTaskName()).append("\n");
-        sql.append("-- 源: ").append(sourceConfig.getConfigName()).append(" -> 目标: ").append(targetConfig.getConfigName()).append("\n");
+        sql.append("-- 源: ").append(sourceConfig.getConfigName()).append(" -> 目标: 平台 Paimon Catalog\n");
         sql.append("-- 策略: ").append(task.getSyncStrategy() != null ? task.getSyncStrategy() : defaultStartMode).append("\n\n");
         sql.append(generatePaimonCatalogSql());
         sql.append("\n");
+        List<String> insertStatements = new ArrayList<>();
 
         // Generate SQL for each table mapping
         for (int i = 0; i < mappings.size(); i++) {
@@ -88,18 +98,38 @@ public class CdcSqlGenerator {
             String startMode = "incremental".equalsIgnoreCase(syncMode)
                     || task.getSyncStrategy() == SyncTask.SyncStrategy.incremental_only
                     ? "latest-offset" : defaultStartMode;
-            sql.append(generateTableCdcSql(sourceConfig, sourceTable, targetConfig, targetDb, targetTable, task, startMode));
+            TableCdcSql tableSql = generateTableCdcSql(
+                    sourceConfig, sourceTable, targetDb, targetTable, task, startMode);
+            sql.append(tableSql.setupSql());
+            insertStatements.add(tableSql.insertSql());
+        }
+
+        // A task must own exactly one Flink Job. Multiple INSERT statements are
+        // therefore submitted as one Statement Set instead of independent jobs.
+        if (insertStatements.size() == 1) {
+            sql.append(insertStatements.get(0)).append(";\n");
+        } else {
+            sql.append("EXECUTE STATEMENT SET\nBEGIN\n");
+            for (String insert : insertStatements) {
+                sql.append("  ").append(insert.replace("\n", "\n  ")).append(";\n");
+            }
+            sql.append("END;\n");
         }
 
         return sql.toString();
     }
 
+    /** Compatibility overload for callers created before Paimon became platform runtime configuration. */
+    public String generateCdcSql(SyncTask task, DatasourceConfig sourceConfig, DatasourceConfig ignoredTargetConfig) {
+        return generateCdcSql(task, sourceConfig);
+    }
+
     /**
      * Generate CDC SQL for a single table mapping.
      */
-    private String generateTableCdcSql(DatasourceConfig sourceConfig, String sourceTable,
-                                        DatasourceConfig targetConfig, String targetDb,
-                                        String targetTable, SyncTask task, String startMode) {
+    private TableCdcSql generateTableCdcSql(DatasourceConfig sourceConfig, String sourceTable,
+                                             String targetDb, String targetTable,
+                                             SyncTask task, String startMode) {
         StringBuilder sql = new StringBuilder();
 
         sql.append("CREATE DATABASE IF NOT EXISTS ").append(identifier(targetDb)).append(";\n\n");
@@ -137,7 +167,7 @@ public class CdcSqlGenerator {
         // Add watermark for event time
         sql.append(") WITH (\n");
         sql.append(generateSourceWithClause(
-                sourceConfig, sourceTable, startMode, schema.serverTimeZone()));
+                sourceConfig, sourceTable, startMode, schema.serverTimeZone(), task));
         sql.append(");\n\n");
 
         // 2. Create Paimon target table
@@ -163,20 +193,23 @@ public class CdcSqlGenerator {
 
         // 3. INSERT INTO statement
         List<String> columnNames = schema.columns().stream().map(c -> identifier(c.name())).toList();
-        sql.append("INSERT INTO ").append(identifier(targetDb)).append(".").append(identifier(targetTable)).append(" (\n");
-        sql.append("  ").append(String.join(",\n  ", columnNames));
-        sql.append("\n) SELECT\n");
-        sql.append("  ").append(String.join(",\n  ", columnNames));
-        sql.append("\nFROM ").append(identifier("source_" + sourceTable)).append(";\n");
+        StringBuilder insert = new StringBuilder();
+        insert.append("INSERT INTO ").append(identifier(targetDb)).append(".").append(identifier(targetTable)).append(" (\n");
+        insert.append("  ").append(String.join(",\n  ", columnNames));
+        insert.append("\n) SELECT\n");
+        insert.append("  ").append(String.join(",\n  ", columnNames));
+        insert.append("\nFROM ").append(identifier("source_" + sourceTable));
 
-        return sql.toString();
+        return new TableCdcSql(sql.toString(), insert.toString());
     }
+
+    private record TableCdcSql(String setupSql, String insertSql) {}
 
     /**
      * Generate source table WITH clause for CDC connector.
      */
     private String generateSourceWithClause(DatasourceConfig sourceConfig, String sourceTable,
-                                            String startMode, String serverTimeZone) {
+                                            String startMode, String serverTimeZone, SyncTask task) {
         StringBuilder sb = new StringBuilder();
         DbType dbType = sourceConfig.getDbType();
 
@@ -204,7 +237,11 @@ public class CdcSqlGenerator {
             sb.append("  'schema-name' = 'public',\n");
             sb.append("  'table-name' = '").append(escape(sourceTable)).append("',\n");
             sb.append("  'scan.startup.mode' = '").append(escape(startMode)).append("',\n");
-            sb.append("  'decoding.plugin.name' = 'pgoutput'\n");
+            sb.append("  'slot.name' = '").append(PostgresCdcNaming.slot(task, sourceTable)).append("',\n");
+            sb.append("  'decoding.plugin.name' = 'pgoutput',\n");
+            sb.append("  'debezium.publication.name' = '")
+                    .append(PostgresCdcNaming.publication(task, sourceTable)).append("',\n");
+            sb.append("  'debezium.publication.autocreate.mode' = 'filtered'\n");
         } else {
             throw new IllegalArgumentException("Unsupported source database type: " + dbType);
         }
@@ -246,15 +283,18 @@ public class CdcSqlGenerator {
         String upper = jdbcType.toUpperCase();
         return switch (upper) {
             case "VARCHAR", "CHAR", "TEXT", "LONGTEXT" -> "STRING";
-            case "INT", "INTEGER", "SMALLINT", "TINYINT" -> "INT";
-            case "BIGINT" -> "BIGINT";
+            case "INT", "INTEGER", "SMALLINT", "TINYINT", "SERIAL", "SMALLSERIAL" -> "INT";
+            case "BIGINT", "BIGSERIAL" -> "BIGINT";
             case "DECIMAL", "NUMERIC" -> "DECIMAL(38, 18)";
-            case "FLOAT" -> "FLOAT";
-            case "DOUBLE" -> "DOUBLE";
+            case "FLOAT", "REAL" -> "FLOAT";
+            case "DOUBLE", "DOUBLE PRECISION" -> "DOUBLE";
             case "BOOLEAN", "BOOL" -> "BOOLEAN";
             case "DATE" -> "DATE";
             case "TIME" -> "TIME(0)";
-            case "DATETIME", "TIMESTAMP", "TIMESTAMP(6)", "TIMESTAMP(3)" -> "TIMESTAMP(3)";
+            case "DATETIME", "TIMESTAMP", "TIMESTAMP WITHOUT TIME ZONE", "TIMESTAMP(6)", "TIMESTAMP(3)" -> "TIMESTAMP(3)";
+            case "TIMESTAMPTZ", "TIMESTAMP WITH TIME ZONE" -> "TIMESTAMP_LTZ(3)";
+            case "BYTEA", "BINARY", "VARBINARY" -> "BYTES";
+            case "JSON", "JSONB", "UUID", "INET", "CIDR", "XML", "ARRAY" -> "STRING";
             case "YEAR" -> "INT";
             default -> "STRING";
         };

@@ -19,7 +19,12 @@ public class DatasourceService {
 
     @Transactional(readOnly = true)
     public List<DatasourceConfig> listDatasources() {
-        return datasourceConfigRepository.findAll();
+        // Paimon is platform runtime configuration managed under Settings, not
+        // a per-task business datasource. Keep legacy rows readable by ID so
+        // historical tasks remain inspectable, but do not offer them for new work.
+        return datasourceConfigRepository.findAll().stream()
+                .filter(item -> item.getDbType() != DatasourceConfig.DbType.paimon)
+                .toList();
     }
 
     @Transactional(readOnly = true)
@@ -30,6 +35,9 @@ public class DatasourceService {
 
     @Transactional
     public DatasourceConfig createDatasource(DatasourceConfig config, Long creatorId) {
+        if (config.getDbType() == DatasourceConfig.DbType.paimon) {
+            throw new IllegalArgumentException("Paimon Catalog 由平台设置统一管理，无需创建数据源");
+        }
         config.setId(null);
         config.setCreatorId(creatorId);
         return datasourceConfigRepository.save(config);
@@ -38,6 +46,9 @@ public class DatasourceService {
     @Transactional
     public DatasourceConfig updateDatasource(Long id, DatasourceConfig config) {
         DatasourceConfig existing = getDatasource(id);
+        if (existing.getDbType() == DatasourceConfig.DbType.paimon) {
+            throw new IllegalStateException("旧版 Paimon 数据源已停用，请在系统设置中维护平台 Paimon Catalog");
+        }
 
         // Update only user-editable fields on the managed entity. Replacing it
         // with the request body would clear creatorId/createdAt and other fields

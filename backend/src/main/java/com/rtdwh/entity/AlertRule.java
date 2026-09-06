@@ -27,6 +27,10 @@ public class AlertRule {
     @Column(nullable = false)
     private Boolean enabled = true;
 
+    @Version
+    @Column(nullable = false)
+    private Long version;
+
     @Column(length = 20)
     private String notifyChannel; // dingtalk, wecom, email
 

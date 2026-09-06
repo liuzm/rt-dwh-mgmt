@@ -1,0 +1,315 @@
+.data-service-page {
+  .data-service-guide {
+    margin-bottom: 12px;
+    padding: 13px 16px;
+    border: 1px solid #91caff !important;
+    border-radius: 10px;
+    background: linear-gradient(135deg, #eaf4ff 0%, #f7fbff 100%) !important;
+    box-shadow: 0 4px 16px rgba(22, 119, 255, 0.06);
+
+    .ant-alert-icon {
+      margin-top: 3px;
+      color: #1677ff !important;
+      font-size: 18px;
+    }
+
+    .ant-alert-content {
+      min-width: 0;
+    }
+
+    .ant-alert-message {
+      margin-bottom: 5px;
+      color: #102a56 !important;
+      font-weight: 600;
+    }
+
+    .ant-alert-description {
+      color: #475467 !important;
+      line-height: 1.6;
+    }
+  }
+
+  .data-service-guide-title {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+
+    .ant-typography {
+      margin: 0;
+    }
+
+    .ant-typography code {
+      padding: 3px 8px;
+      border: 1px solid #b8d7ff;
+      border-radius: 5px;
+      background: #fff;
+      color: #0958d9;
+      font-weight: 600;
+      box-shadow: 0 1px 3px rgba(22, 119, 255, 0.08);
+    }
+
+    .ant-typography-copy {
+      color: #1677ff;
+    }
+  }
+
+  .data-service-guide-description code {
+    padding: 1px 5px;
+    border-radius: 4px;
+    background: rgba(22, 119, 255, 0.1);
+    color: #0958d9;
+    font-weight: 600;
+  }
+
+  .data-service-metrics {
+    margin-bottom: 12px;
+  }
+
+  .data-service-metric-card {
+    height: 100%;
+    overflow: hidden;
+    border-color: #e7ebf0;
+    border-radius: 10px;
+    box-shadow: 0 2px 10px rgba(16, 24, 40, 0.035);
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+
+    &:hover {
+      border-color: #d6e4ff;
+      box-shadow: 0 6px 18px rgba(16, 24, 40, 0.07);
+    }
+
+    .ant-card-body {
+      display: flex;
+      align-items: center;
+      min-height: 84px;
+      padding: 13px 16px;
+    }
+
+    .ant-statistic {
+      min-width: 0;
+    }
+
+    .ant-statistic-title {
+      margin-bottom: 1px;
+      color: #667085;
+      font-size: 13px;
+    }
+
+    .ant-statistic-content {
+      color: #172033;
+      font-size: 25px;
+      font-weight: 650;
+      line-height: 1.2;
+    }
+
+    .ant-statistic-content-suffix {
+      margin-left: 3px;
+      font-size: 15px;
+      font-weight: 600;
+    }
+  }
+
+  .data-service-metric-icon {
+    display: inline-flex;
+    flex: 0 0 40px;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    margin-right: 12px;
+    border-radius: 10px;
+    font-size: 20px;
+
+    &.is-blue {
+      background: #e6f4ff;
+      color: #1677ff;
+    }
+
+    &.is-cyan {
+      background: #e6fffb;
+      color: #08979c;
+    }
+
+    &.is-green {
+      background: #f0fbe8;
+      color: #389e0d;
+    }
+
+    &.is-purple {
+      background: #f5edff;
+      color: #722ed1;
+    }
+  }
+
+  .data-service-content-card {
+    overflow: hidden;
+    border-color: #e7ebf0;
+    border-radius: 10px;
+    box-shadow: 0 2px 10px rgba(16, 24, 40, 0.035);
+
+    > .ant-card-body {
+      padding: 0 16px 14px;
+    }
+  }
+
+  .data-service-tabs {
+    > .ant-tabs-nav {
+      margin: 0 0 12px;
+    }
+
+    > .ant-tabs-nav::before {
+      border-color: #edf0f3;
+    }
+
+    .ant-tabs-tab {
+      padding: 13px 4px 11px;
+    }
+
+    .ant-tabs-tab-active .ant-tabs-tab-btn {
+      font-weight: 600;
+    }
+  }
+
+  .data-service-toolbar {
+    min-height: 34px;
+    margin-bottom: 10px;
+    gap: 8px;
+  }
+
+  .data-service-search {
+    width: 280px;
+  }
+
+  .data-service-filter-group {
+    display: flex;
+    gap: 8px;
+    margin-left: auto;
+  }
+
+  .data-service-status {
+    width: 144px;
+  }
+
+  .data-service-toolbar-note {
+    margin-left: auto;
+    color: #8a94a6;
+    font-size: 12px;
+  }
+
+  .data-service-table {
+    .ant-table {
+      border-radius: 8px;
+    }
+
+    .ant-table-container {
+      border: 1px solid #eef1f4;
+      border-radius: 8px;
+    }
+
+    .ant-table-thead > tr > th {
+      padding-top: 10px;
+      padding-bottom: 10px;
+      background: #f8fafc;
+      color: #344054;
+      font-size: 13px;
+      font-weight: 600;
+    }
+
+    .ant-table-tbody > tr > td {
+      padding-top: 10px;
+      padding-bottom: 10px;
+      color: #475467;
+    }
+
+    .ant-table-tbody > tr:hover > td {
+      background: #f7fbff !important;
+    }
+
+    .ant-table-cell .ant-typography code {
+      color: #175cd3;
+    }
+
+    .ant-empty-normal {
+      margin-block: 20px;
+    }
+  }
+
+  .data-service-empty {
+    margin-block: 18px;
+
+    .ant-empty-image {
+      height: 32px;
+      margin-bottom: 6px;
+    }
+
+    .ant-empty-description {
+      color: #667085;
+    }
+
+    .ant-btn {
+      height: auto;
+      padding-block: 2px;
+    }
+  }
+}
+
+.data-service-warning-alert {
+  margin-bottom: 16px;
+  border: 1px solid #ffe58f !important;
+  border-radius: 8px;
+  background: #fffbe6 !important;
+
+  .ant-alert-icon,
+  .ant-alert-message {
+    color: #ad6800 !important;
+  }
+
+  .ant-alert-description {
+    color: #595959 !important;
+  }
+}
+
+@media (max-width: 767px) {
+  .data-service-page {
+    .data-service-guide {
+      padding: 12px 13px;
+    }
+
+    .data-service-metric-card .ant-card-body {
+      min-height: 78px;
+      padding: 11px 12px;
+    }
+
+    .data-service-metric-icon {
+      flex-basis: 36px;
+      width: 36px;
+      height: 36px;
+      margin-right: 9px;
+      font-size: 18px;
+    }
+
+    .data-service-metric-card .ant-statistic-content {
+      font-size: 22px;
+    }
+
+    .data-service-toolbar {
+      align-items: stretch;
+    }
+
+    .data-service-filter-group {
+      flex: 1 0 100%;
+      flex-wrap: wrap;
+      margin-left: 0;
+    }
+
+    .data-service-search,
+    .data-service-status {
+      width: 100%;
+    }
+
+    .data-service-toolbar-note {
+      margin-left: 0;
+    }
+  }
+}

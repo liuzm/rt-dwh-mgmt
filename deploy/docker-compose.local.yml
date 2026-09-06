@@ -1,0 +1,37 @@
+# Small, single-host integration environment. Uses locally compiled application artifacts.
+services:
+  doris-fe:
+    volumes:
+      - ./doris/fe.local.conf:/opt/apache-doris/fe/conf/fe.conf
+  doris-be:
+    volumes:
+      - ./doris/be.local.conf:/opt/apache-doris/be/conf/be.conf
+  flink-jobmanager:
+    environment:
+      FLINK_PROPERTIES: |
+        jobmanager.rpc.address: flink-jobmanager
+        jobmanager.scheduler: adaptive
+        jobmanager.memory.process.size: 768m
+        execution.checkpointing.dir: file:///tmp/flink-savepoints/checkpoints
+        execution.checkpointing.savepoint-dir: file:///tmp/flink-savepoints
+  flink-taskmanager:
+    environment:
+      FLINK_PROPERTIES: |
+        jobmanager.rpc.address: flink-jobmanager
+        taskmanager.memory.process.size: 1536m
+        taskmanager.numberOfTaskSlots: 4
+        execution.checkpointing.dir: file:///tmp/flink-savepoints/checkpoints
+        execution.checkpointing.savepoint-dir: file:///tmp/flink-savepoints
+  flink-sql-gateway:
+    environment:
+      FLINK_ENV_JAVA_OPTS: -Xmx512m
+  rtdwh-backend:
+    build:
+      dockerfile: Dockerfile.local
+    environment:
+      JAVA_TOOL_OPTIONS: -Xms128m -Xmx512m
+      MANAGEMENT_HEALTH_MAIL_ENABLED: "false"
+      SPRING_JPA_SHOW_SQL: "false"
+  rtdwh-nginx:
+    build:
+      dockerfile: frontend/Dockerfile.local

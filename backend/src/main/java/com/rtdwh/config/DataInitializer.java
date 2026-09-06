@@ -3,10 +3,12 @@ package com.rtdwh.config;
 import com.rtdwh.entity.DatasourceConfig;
 import com.rtdwh.entity.DatasourceConfig.DbType;
 import com.rtdwh.entity.SysRole;
+import com.rtdwh.entity.SysPermission;
 import com.rtdwh.entity.SysUser;
 import com.rtdwh.entity.SysUser.UserStatus;
 import com.rtdwh.repository.DatasourceConfigRepository;
 import com.rtdwh.repository.SysRoleRepository;
+import com.rtdwh.repository.SysPermissionRepository;
 import com.rtdwh.repository.SysUserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -16,7 +18,10 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Component
@@ -25,6 +30,7 @@ public class DataInitializer implements CommandLineRunner {
 
     private final SysUserRepository userRepo;
     private final SysRoleRepository roleRepo;
+    private final SysPermissionRepository permissionRepo;
     private final DatasourceConfigRepository datasourceRepo;
     private final PasswordEncoder passwordEncoder;
 
@@ -44,6 +50,7 @@ public class DataInitializer implements CommandLineRunner {
     @Transactional
     public void run(String... args) {
         initRoles();
+        initPermissions();
         if (initUsersEnabled) {
             initUsers();
             initDatasources();
@@ -68,6 +75,58 @@ public class DataInitializer implements CommandLineRunner {
         if (!roleRepo.existsByRoleCode(code)) {
             roleRepo.save(SysRole.builder().roleCode(code).roleName(name).description(description).build());
         }
+    }
+
+    private void initPermissions() {
+        Map<String, String> definitions = new LinkedHashMap<>();
+        definitions.put("task:view", "查看同步任务");
+        definitions.put("task:create", "创建同步任务");
+        definitions.put("task:manage", "管理同步任务");
+        definitions.put("datasource:view", "查看数据源");
+        definitions.put("datasource:manage", "管理数据源");
+        definitions.put("dwh:view", "查看数仓元数据");
+        definitions.put("dwh:manage", "管理数仓元数据");
+        definitions.put("query:adhoc", "执行即席查询");
+        definitions.put("report:view", "查看报表");
+        definitions.put("report:create", "管理报表");
+        definitions.put("quality:view", "查看数据质量");
+        definitions.put("quality:manage", "管理数据质量");
+        definitions.put("lineage:view", "查看数据血缘");
+        definitions.put("alert:view", "查看告警");
+        definitions.put("alert:manage", "管理告警");
+        definitions.put("settings:view", "查看系统状态");
+        definitions.put("settings:manage", "管理系统设置");
+        definitions.put("audit:view", "查看操作审计");
+        definitions.put("user:manage", "管理用户与角色");
+        definitions.put("data-service:view", "查看数据服务");
+        definitions.put("data-service:manage", "管理数据服务");
+        definitions.put("foundation:view", "查看公共能力治理中心");
+        int order = 1;
+        for (Map.Entry<String, String> definition : definitions.entrySet()) {
+            if (!permissionRepo.existsByPermCode(definition.getKey())) {
+                permissionRepo.save(SysPermission.builder().permCode(definition.getKey())
+                        .permName(definition.getValue()).resourceType(SysPermission.ResourceType.api)
+                        .sortOrder(order).build());
+            }
+            order++;
+        }
+        Map<String, SysPermission> all = permissionRepo.findAll().stream()
+                .collect(Collectors.toMap(SysPermission::getPermCode, permission -> permission));
+        assignPermissions("ADMIN", all.keySet(), all);
+        assignPermissions("DEVELOPER", Set.of("task:view", "task:create", "task:manage",
+                "datasource:view", "datasource:manage", "dwh:view", "dwh:manage", "query:adhoc",
+                "report:view", "report:create", "quality:view", "quality:manage", "lineage:view",
+                "alert:view", "settings:view", "data-service:view", "data-service:manage", "foundation:view"), all);
+        assignPermissions("VISITOR", Set.of("task:view", "datasource:view", "dwh:view",
+                "query:adhoc", "report:view", "quality:view", "lineage:view", "alert:view",
+                "settings:view", "foundation:view"), all);
+    }
+
+    private void assignPermissions(String roleCode, Set<String> codes, Map<String, SysPermission> all) {
+        SysRole role = roleRepo.findByRoleCode(roleCode).orElseThrow();
+        role.setPermissions(codes.stream().map(all::get).filter(java.util.Objects::nonNull)
+                .collect(Collectors.toSet()));
+        roleRepo.save(role);
     }
 
     private void initUsers() {

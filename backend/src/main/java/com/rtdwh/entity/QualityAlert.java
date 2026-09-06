@@ -21,8 +21,15 @@ public class QualityAlert {
     @Column(nullable = false, length = 50)
     private String ruleType;
 
-    @Column(length = 100)
+    @Column(length = 255)
     private String targetTable;
+    @Column(length = 20)
+    private String layer;
+    @Builder.Default
+    @Column(nullable = false, length = 128)
+    private String scopeKey = "full_table";
+    private LocalDateTime windowStart;
+    private LocalDateTime windowEnd;
 
     @Column(length = 100)
     private String targetColumn;
@@ -31,7 +38,7 @@ public class QualityAlert {
 
     private Double thresholdValue;
 
-    @Column(length = 500)
+    @Column(columnDefinition = "TEXT")
     private String message;
 
     @Column(length = 20)
@@ -44,6 +51,9 @@ public class QualityAlert {
     private Boolean resolved = false;
 
     private LocalDateTime resolvedAt;
+
+    @Column(length = 20)
+    private String resolutionReason; // recovered, acknowledged, suppressed
 
     private LocalDateTime triggeredAt;
 }

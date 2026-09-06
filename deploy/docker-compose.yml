@@ -4,16 +4,22 @@ services:
     image: mysql:8.0
     container_name: rtdwh-mysql
     environment:
-      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root123123}
       MYSQL_DATABASE: rtdwh_mgmt
       MYSQL_USER: ${MYSQL_USER:-rtdwh_admin}
-      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-root123123}
     ports:
-      - "127.0.0.1:3306:3306"
+      - "127.0.0.1:${MYSQL_PORT:-3306}:3306"
     volumes:
       - mysql_data:/var/lib/mysql
       - ../scripts/init-mysql.sql:/docker-entrypoint-initdb.d/init.sql
-    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+      - --server-id=1
+      - --log-bin=mysql-bin
+      - --binlog-format=ROW
+      - --binlog-row-image=FULL
     healthcheck:
       test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
       interval: 10s
@@ -21,7 +27,9 @@ services:
       retries: 5
     restart: unless-stopped
     networks:
-      - rtdwh-backend
+      rtdwh-backend:
+      doris-network:
+        ipv4_address: 172.28.0.4
 
   # PostgreSQL - 可选业务源库示例
   postgresql:
@@ -30,11 +38,19 @@ services:
     environment:
       POSTGRES_DB: inventory
       POSTGRES_USER: ${PG_USER:-rtdwh_admin}
-      POSTGRES_PASSWORD: ${PG_PASSWORD:-}
+      POSTGRES_PASSWORD: ${PG_PASSWORD:-root123123}
     ports:
       - "127.0.0.1:5432:5432"
     volumes:
       - pg_data:/var/lib/postgresql/data
+    command:
+      - postgres
+      - -c
+      - wal_level=logical
+      - -c
+      - max_replication_slots=10
+      - -c
+      - max_wal_senders=10
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${PG_USER:-rtdwh_admin}"]
       interval: 10s
@@ -44,6 +60,58 @@ services:
     networks:
       - rtdwh-backend
 
+  # Doris FE - interactive SQL planner and MySQL-compatible query endpoint
+  doris-fe:
+    image: apache/doris:fe-4.1.3
+    container_name: rtdwh-doris-fe
+    hostname: doris-fe
+    environment:
+      - FE_SERVERS=fe1:172.28.0.2:9010
+      - FE_ID=1
+    ports:
+      - "127.0.0.1:8030:8030"
+      - "127.0.0.1:9030:9030"
+    volumes:
+      - doris_fe_meta:/opt/apache-doris/fe/doris-meta
+      - doris_fe_log:/opt/apache-doris/fe/log
+      - type: bind
+        source: ${PAIMON_HOST_WAREHOUSE:-${HOME}/rtdwh-data/paimon}
+        target: /data/paimon
+        read_only: true
+    restart: unless-stopped
+    networks:
+      doris-network:
+        ipv4_address: 172.28.0.2
+
+  # Doris BE - scans the shared Paimon warehouse for ad-hoc queries
+  doris-be:
+    image: apache/doris:be-4.1.3
+    container_name: rtdwh-doris-be
+    hostname: doris-be
+    environment:
+      - MASTER_FE_IP=172.28.0.2
+      - CURRENT_BE_IP=172.28.0.3
+      - CURRENT_BE_PORT=9050
+      - PRIORITY_NETWORKS=172.28.0.0/24
+      - FE_SERVERS=fe1:172.28.0.2:9010
+      - BE_ADDR=172.28.0.3:9050
+    ports:
+      - "127.0.0.1:8040:8040"
+    volumes:
+      - doris_be_storage:/opt/apache-doris/be/storage
+      - doris_be_log:/opt/apache-doris/be/log
+      - type: bind
+        source: ${PAIMON_HOST_WAREHOUSE:-${HOME}/rtdwh-data/paimon}
+        target: /data/paimon
+        read_only: true
+    depends_on:
+      - doris-fe
+      - mysql
+    restart: unless-stopped
+    networks:
+      doris-network:
+        ipv4_address: 172.28.0.3
+
   # Flink JobManager
   flink-jobmanager:
     build:
@@ -52,16 +120,19 @@ services:
     image: rtdwh-flink:2.2.1
     container_name: rtdwh-flink-jobmanager
     ports:
-      - "8081:8081"
+      - "127.0.0.1:8081:8081"
     command: jobmanager
     environment:
       FLINK_PROPERTIES: |
         jobmanager.rpc.address: flink-jobmanager
-        execution.checkpointing.dir: file:///tmp/flink-checkpoints
+        jobmanager.scheduler: adaptive
+        execution.checkpointing.dir: file:///tmp/flink-savepoints/checkpoints
         execution.checkpointing.savepoint-dir: file:///tmp/flink-savepoints
     volumes:
       - flink_data:/opt/flink/data
-      - paimon_data:/data/paimon
+      - type: bind
+        source: ${PAIMON_HOST_WAREHOUSE:-${HOME}/rtdwh-data/paimon}
+        target: /data/paimon
       - savepoint_data:/tmp/flink-savepoints
     restart: unless-stopped
     networks:
@@ -74,20 +145,21 @@ services:
       dockerfile: Dockerfile
     image: rtdwh-flink:2.2.1
     depends_on:
-      - flink-jobmanager
+      flink-jobmanager:
+        condition: service_started
     command: taskmanager
     environment:
       FLINK_PROPERTIES: |
         jobmanager.rpc.address: flink-jobmanager
-        taskmanager.numberOfTaskSlots: 4
-        execution.checkpointing.dir: file:///tmp/flink-checkpoints
+        taskmanager.numberOfTaskSlots: ${FLINK_TASKMANAGER_SLOTS:-8}
+        execution.checkpointing.dir: file:///tmp/flink-savepoints/checkpoints
         execution.checkpointing.savepoint-dir: file:///tmp/flink-savepoints
     volumes:
       - flink_data:/opt/flink/data
-      - paimon_data:/data/paimon
+      - type: bind
+        source: ${PAIMON_HOST_WAREHOUSE:-${HOME}/rtdwh-data/paimon}
+        target: /data/paimon
       - savepoint_data:/tmp/flink-savepoints
-    deploy:
-      replicas: 2
     restart: unless-stopped
     networks:
       - rtdwh-backend
@@ -100,7 +172,8 @@ services:
     image: rtdwh-flink:2.2.1
     container_name: rtdwh-flink-sql-gateway
     depends_on:
-      - flink-jobmanager
+      flink-jobmanager:
+        condition: service_started
     command:
       - /opt/flink/bin/sql-gateway.sh
       - start-foreground
@@ -118,7 +191,9 @@ services:
         rest.port: 8081
         table.dml-sync: false
     volumes:
-      - paimon_data:/data/paimon
+      - type: bind
+        source: ${PAIMON_HOST_WAREHOUSE:-${HOME}/rtdwh-data/paimon}
+        target: /data/paimon
       - savepoint_data:/tmp/flink-savepoints
     restart: unless-stopped
     networks:
@@ -131,19 +206,40 @@ services:
       dockerfile: Dockerfile
     container_name: rtdwh-backend
     ports:
-      - "8080:8080"
+      - "127.0.0.1:8080:8080"
     environment:
-      - DB_PASSWORD=${DB_PASSWORD:-}
+      - SPRING_DATASOURCE_URL=jdbc:mysql://mysql:3306/rtdwh_mgmt?useUnicode=true&characterEncoding=utf8&useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Shanghai
+      - DB_PASSWORD=${DB_PASSWORD:-root123123}
       - DB_USERNAME=${DB_USERNAME:-rtdwh_admin}
       - FLINK_REST_URL=http://flink-jobmanager:8081
       - FLINK_JAR_PATH=/opt/flink/usrlib
       - FLINK_SAVEPOINT_DIR=file:///tmp/flink-savepoints
+      - FLINK_SCALING_PROVIDER=standalone
       - SQL_GATEWAY_ENABLED=true
       - SQL_GATEWAY_URL=http://flink-sql-gateway:8083
+      - DORIS_ENABLED=${DORIS_ENABLED:-true}
+      - DORIS_JDBC_URL=jdbc:mysql://doris-fe:9030
+      - DORIS_HTTP_URL=http://doris-fe:8030
+      - DORIS_USERNAME=${DORIS_USERNAME:-root}
+      - DORIS_PASSWORD=${DORIS_PASSWORD:-}
+      - DORIS_CATALOG=${DORIS_CATALOG:-rtdwh_paimon}
+      - DORIS_DATABASE=${DORIS_DATABASE:-ods}
+      - DORIS_INITIALIZE_CATALOG=${DORIS_INITIALIZE_CATALOG:-true}
+      - DORIS_CATALOG_INIT_RETRY_MS=${DORIS_CATALOG_INIT_RETRY_MS:-30000}
+      - DORIS_WORKLOAD_GROUP=${DORIS_WORKLOAD_GROUP:-rtdwh_adhoc}
+      - DORIS_EXEC_MEM_LIMIT_BYTES=${DORIS_EXEC_MEM_LIMIT_BYTES:-2147483648}
+      - DORIS_PAIMON_WAREHOUSE=/data/paimon
+      - DORIS_PAIMON_JDBC_URI=jdbc:mysql://mysql:3306/rtdwh_paimon_meta?useUnicode=true&characterEncoding=utf8&useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Shanghai
+      - DORIS_PAIMON_TABLE_CACHE_TTL_SECONDS=${DORIS_PAIMON_TABLE_CACHE_TTL_SECONDS:-0}
+      - QUERY_MAX_CONCURRENT_PER_USER=${QUERY_MAX_CONCURRENT_PER_USER:-2}
+      - QUERY_QUEUE_WAIT_SECONDS=${QUERY_QUEUE_WAIT_SECONDS:-3}
+      - QUERY_BUDGET_SCANNED_BYTES=${QUERY_BUDGET_SCANNED_BYTES:-5368709120}
+      - QUERY_BUDGET_CPU_MS=${QUERY_BUDGET_CPU_MS:-30000}
+      - QUERY_BUDGET_PEAK_MEMORY_BYTES=${QUERY_BUDGET_PEAK_MEMORY_BYTES:-2147483648}
       - PAIMON_WAREHOUSE=/data/paimon
-      - PAIMON_JDBC_URI=jdbc:mysql://mysql:3306/rtdwh_paimon_meta?useUnicode=true&characterEncoding=utf8&useSSL=false&serverTimezone=Asia/Shanghai
+      - PAIMON_JDBC_URI=jdbc:mysql://mysql:3306/rtdwh_paimon_meta?useUnicode=true&characterEncoding=utf8&useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Shanghai
       - PAIMON_JDBC_USER=${PAIMON_JDBC_USER:-rtdwh_admin}
-      - PAIMON_JDBC_PASSWORD=${PAIMON_JDBC_PASSWORD:-}
+      - PAIMON_JDBC_PASSWORD=${PAIMON_JDBC_PASSWORD:-root123123}
       - JWT_SECRET=${JWT_SECRET:-}
       - ENCRYPTION_KEY=${ENCRYPTION_KEY:-}
       - INIT_USERS_ENABLED=${INIT_USERS_ENABLED:-false}
@@ -153,22 +249,52 @@ services:
       - HEALTH_MONITOR_ENABLED=${HEALTH_MONITOR_ENABLED:-true}
       - HEALTH_MONITOR_INTERVAL_MS=${HEALTH_MONITOR_INTERVAL_MS:-60000}
       - HEALTH_MONITOR_INITIAL_DELAY_MS=${HEALTH_MONITOR_INITIAL_DELAY_MS:-5000}
+      - QUALITY_SCHEDULE_ENABLED=${QUALITY_SCHEDULE_ENABLED:-true}
+      - QUALITY_SCHEDULE_INTERVAL_MS=${QUALITY_SCHEDULE_INTERVAL_MS:-3600000}
+      - QUALITY_SCHEDULE_INITIAL_DELAY_MS=${QUALITY_SCHEDULE_INITIAL_DELAY_MS:-60000}
+      - REPORT_SCHEDULE_ENABLED=${REPORT_SCHEDULE_ENABLED:-true}
+      - REPORT_SCHEDULE_INTERVAL_MS=${REPORT_SCHEDULE_INTERVAL_MS:-30000}
+      - REPORT_SCHEDULE_INITIAL_DELAY_MS=${REPORT_SCHEDULE_INITIAL_DELAY_MS:-30000}
+      - WORKFLOW_SCHEDULER_ENABLED=${WORKFLOW_SCHEDULER_ENABLED:-true}
+      - WORKFLOW_DEPENDENCY_CHECK_MS=${WORKFLOW_DEPENDENCY_CHECK_MS:-10000}
+      - WORKFLOW_INITIAL_DELAY_MS=${WORKFLOW_INITIAL_DELAY_MS:-10000}
+      - WORKFLOW_SCHEDULE_TRIGGER_ENABLED=${WORKFLOW_SCHEDULE_TRIGGER_ENABLED:-true}
+      - WORKFLOW_SCHEDULE_TRIGGER_INTERVAL_MS=${WORKFLOW_SCHEDULE_TRIGGER_INTERVAL_MS:-10000}
+      - WORKFLOW_SCHEDULE_TRIGGER_INITIAL_DELAY_MS=${WORKFLOW_SCHEDULE_TRIGGER_INITIAL_DELAY_MS:-15000}
+      - WORKFLOW_RUNNER_ENABLED=${WORKFLOW_RUNNER_ENABLED:-true}
+      - WORKFLOW_RUNNER_EXECUTOR_ID=${WORKFLOW_RUNNER_EXECUTOR_ID:-internal-flink-sql}
+      - WORKFLOW_RUNNER_INTERVAL_MS=${WORKFLOW_RUNNER_INTERVAL_MS:-5000}
+      - WORKFLOW_RUNNER_INITIAL_DELAY_MS=${WORKFLOW_RUNNER_INITIAL_DELAY_MS:-15000}
+      - WORKFLOW_RUNNER_MAX_CONCURRENT=${WORKFLOW_RUNNER_MAX_CONCURRENT:-2}
+      - WORKFLOW_RUNNER_LEASE_SECONDS=${WORKFLOW_RUNNER_LEASE_SECONDS:-60}
+      - WORKFLOW_RUNNER_MAX_RETRIES=${WORKFLOW_RUNNER_MAX_RETRIES:-3}
+      - WORKFLOW_RUNNER_RETRY_BACKOFF_SECONDS=${WORKFLOW_RUNNER_RETRY_BACKOFF_SECONDS:-30}
       - MAIL_HOST=${MAIL_HOST:-}
       - DINGTALK_WEBHOOK=${DINGTALK_WEBHOOK:-}
       - WECOM_WEBHOOK=${WECOM_WEBHOOK:-}
       - ALERT_EMAIL_RECIPIENTS=${ALERT_EMAIL_RECIPIENTS:-}
+      - ALERT_SCHEDULE_ENABLED=${ALERT_SCHEDULE_ENABLED:-true}
+      - ALERT_SCHEDULE_INTERVAL_MS=${ALERT_SCHEDULE_INTERVAL_MS:-30000}
+      - ALERT_SCHEDULE_INITIAL_DELAY_MS=${ALERT_SCHEDULE_INITIAL_DELAY_MS:-15000}
     depends_on:
       mysql:
         condition: service_healthy
       flink-sql-gateway:
         condition: service_started
+      doris-fe:
+        condition: service_started
+      doris-be:
+        condition: service_started
     volumes:
-      - paimon_data:/data/paimon
+      - type: bind
+        source: ${PAIMON_HOST_WAREHOUSE:-${HOME}/rtdwh-data/paimon}
+        target: /data/paimon
       - savepoint_data:/tmp/flink-savepoints
     restart: unless-stopped
     networks:
       - rtdwh-backend
       - rtdwh-frontend
+      - doris-network
 
   # Nginx Reverse Proxy (Frontend + Backend)
   rtdwh-nginx:
@@ -177,10 +303,10 @@ services:
       dockerfile: frontend/Dockerfile
     container_name: rtdwh-nginx
     ports:
-      - "80:80"
-      - "443:443"
+      - "${RTDWH_HTTP_PORT:-80}:80"
     depends_on:
-      - rtdwh-backend
+      rtdwh-backend:
+        condition: service_started
     restart: unless-stopped
     networks:
       - rtdwh-frontend
@@ -192,7 +318,7 @@ services:
     ports:
       - "127.0.0.1:9090:9090"
     volumes:
-      - ../deploy/prometheus.yml:/etc/prometheus/prometheus.yml
+      - ../deploy/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - prometheus_data:/prometheus
     restart: unless-stopped
     profiles:
@@ -207,11 +333,12 @@ services:
     ports:
       - "127.0.0.1:3001:3000"
     environment:
-      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-admin}
     volumes:
       - grafana_data:/var/lib/grafana
     depends_on:
-      - prometheus
+      prometheus:
+        condition: service_started
     restart: unless-stopped
     profiles:
       - monitoring
@@ -222,8 +349,11 @@ volumes:
   mysql_data:
   pg_data:
   flink_data:
-  paimon_data:
   savepoint_data:
+  doris_fe_meta:
+  doris_fe_log:
+  doris_be_storage:
+  doris_be_log:
   prometheus_data:
   grafana_data:
 
@@ -232,3 +362,8 @@ networks:
     driver: bridge
   rtdwh-frontend:
     driver: bridge
+  doris-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.28.0.0/24

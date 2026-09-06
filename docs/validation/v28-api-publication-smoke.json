@@ -1,0 +1,32 @@
+{
+  "before": {
+    "samples": 20,
+    "concurrency": 1,
+    "rows": 1,
+    "medianMs": 75.49,
+    "p95Ms": 80.17,
+    "maxMs": 82.48,
+    "query": "parameterized BIGINT constant through real Doris"
+  },
+  "after": {
+    "samples": 20,
+    "concurrency": 1,
+    "rows": 1,
+    "medianMs": 80.3,
+    "p95Ms": 86.12,
+    "maxMs": 87.11,
+    "query": "parameterized BIGINT constant through real Doris"
+  },
+  "verified": [
+    "legacy_capture",
+    "draft_isolation",
+    "concurrent_publish_4",
+    "stale_revision",
+    "failed_publish",
+    "incompatible_columns",
+    "rollback_keeps_draft",
+    "version_logs",
+    "offline",
+    "capability_api_guard"
+  ]
+}

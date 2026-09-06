@@ -28,8 +28,43 @@ public class QueryHistory {
     private String sqlText;
 
     @Enumerated(EnumType.STRING)
-    @Column(nullable = false, length = 10)
+    @Column(nullable = false, length = 16)
     private QueryType queryType;
+
+    @Builder.Default
+    @Column(columnDefinition = "VARCHAR(16) NOT NULL DEFAULT 'doris'")
+    private String queryEngine = "doris";
+
+    @Column(length = 128)
+    private String queryId;
+
+    @Column(length = 128)
+    private String traceId;
+
+    private Long scannedRows;
+
+    private Long scannedBytes;
+
+    private Long cpuMs;
+
+    private Long peakMemoryBytes;
+
+    private Long localScanBytes;
+
+    private Long remoteScanBytes;
+
+    private Long cacheWriteBytes;
+
+    private Long queueWaitMs;
+
+    private Double costScore;
+
+    @Builder.Default
+    @Column(nullable = false)
+    private Boolean budgetExceeded = false;
+
+    @Column(length = 512)
+    private String budgetReason;
 
     private Integer resultRowCount;
 
@@ -47,7 +82,7 @@ public class QueryHistory {
     private LocalDateTime createdAt;
 
     public enum QueryType {
-        adhoc, report
+        adhoc, report, data_service
     }
 
     public enum QueryStatus {

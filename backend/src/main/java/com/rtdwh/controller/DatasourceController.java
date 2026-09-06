@@ -9,6 +9,7 @@ import com.rtdwh.util.EncryptionUtil;
 import com.rtdwh.util.SecurityContextUtil;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.security.access.prepost.PreAuthorize;
 
 import java.util.List;
 import java.util.Map;
@@ -16,6 +17,7 @@ import java.util.Map;
 @RestController
 @RequestMapping("/datasources")
 @RequiredArgsConstructor
+@PreAuthorize("hasAuthority('datasource:view')")
 public class DatasourceController {
 
     private final DatasourceService datasourceService;
@@ -29,6 +31,7 @@ public class DatasourceController {
     }
 
     @PostMapping
+    @PreAuthorize("hasAuthority('datasource:manage')")
     public ApiResponse<DatasourceConfig> createDatasource(@RequestBody DatasourceConfig config) {
         Long creatorId = securityContextUtil.getCurrentUserId();
         // Encrypt password before saving
@@ -37,6 +40,7 @@ public class DatasourceController {
     }
 
     @PutMapping("/{id}")
+    @PreAuthorize("hasAuthority('datasource:manage')")
     public ApiResponse<DatasourceConfig> updateDatasource(@PathVariable Long id, @RequestBody DatasourceConfig config) {
         DatasourceConfig existing = datasourceService.getDatasource(id);
         // Preserve encrypted password if not changed
@@ -51,6 +55,7 @@ public class DatasourceController {
     }
 
     @DeleteMapping("/{id}")
+    @PreAuthorize("hasAuthority('datasource:manage')")
     public ApiResponse<Void> deleteDatasource(@PathVariable Long id) {
         datasourceService.deleteDatasource(id);
         return ApiResponse.success("Datasource deleted", null);
@@ -59,13 +64,16 @@ public class DatasourceController {
     @GetMapping("/{id}/test-connection")
     public ApiResponse<Map<String, Object>> testConnection(@PathVariable Long id) {
         DatasourceConfig config = datasourceService.getDatasource(id);
+        if (config.getDbType() == DbType.paimon) {
+            throw new IllegalArgumentException("Paimon Catalog 请在系统设置的依赖健康中检测");
+        }
 
         try {
             String decryptedPassword = encryptionUtil.decrypt(config.getPasswordEncrypted());
             String url = switch (config.getDbType()) {
                 case mysql -> "jdbc:mysql://" + config.getHost() + ":" + config.getPort() + "/" + config.getDatabase();
                 case postgresql -> "jdbc:postgresql://" + config.getHost() + ":" + config.getPort() + "/" + config.getDatabase();
-                case paimon -> "paimon://" + config.getHost();
+                case paimon -> throw new IllegalArgumentException("Paimon Catalog 请在系统设置中检测");
             };
 
             java.sql.Connection conn = java.sql.DriverManager.getConnection(

@@ -2,6 +2,8 @@ package com.rtdwh.dto;
 
 import lombok.Data;
 
+import java.util.List;
+
 @Data
 public class LoginResponse {
     private String token;
@@ -10,4 +12,5 @@ public class LoginResponse {
     private String realName;
     private String email;
     private String role;
+    private List<String> permissions;
 }

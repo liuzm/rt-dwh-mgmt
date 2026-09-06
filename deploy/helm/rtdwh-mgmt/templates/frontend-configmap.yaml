@@ -1,0 +1,26 @@
+{{- if .Values.frontend.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "rtdwh-mgmt.fullname" . }}-frontend-nginx
+  labels:
+    {{- include "rtdwh-mgmt.labels" . | nindent 4 }}
+data:
+  default.conf: |
+    server {
+      listen 80;
+      server_name _;
+      location / {
+        root /usr/share/nginx/html;
+        index index.html;
+        try_files $uri $uri/ /index.html;
+      }
+      location /api/v1/ {
+        proxy_pass http://{{ include "rtdwh-mgmt.fullname" . }}-backend:{{ .Values.backend.service.port }}/;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_read_timeout 300s;
+      }
+    }
+{{- end }}

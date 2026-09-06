@@ -50,6 +50,15 @@ public class TableMaintenanceLog {
     @Column(length = 64)
     private String operationId;
 
+    @Column(length = 64)
+    private String sessionId;
+
+    @Column(length = 64)
+    private String flinkJobId;
+
+    @Column(length = 20)
+    private String executionPhase;
+
     @Column(columnDefinition = "TEXT", name = "sql_content")
     private String sqlContent;
 
@@ -58,6 +67,28 @@ public class TableMaintenanceLog {
     private LocalDateTime startedAt;
 
     private LocalDateTime finishedAt;
+
+    @Builder.Default @Column(nullable = false) private Long revision = 0L;
+    @com.fasterxml.jackson.annotation.JsonIgnore
+    @Column(length = 36) private String coordinationToken;
+    @Builder.Default @Column(nullable = false, length = 32) private String contractOrigin = "legacy_unbound";
+    @Column(length = 64) private String assetId;
+    @Column(length = 128) private String catalogName;
+    @Column(length = 128) private String databaseName;
+    @Column(length = 128) private String tableName;
+    private Long requestedBy;
+    @Column(length = 1024) private String gatewayUrl;
+    @Column(length = 1024) private String flinkUrl;
+    @com.fasterxml.jackson.annotation.JsonIgnore
+    @Column(columnDefinition = "JSON") private String environmentJson;
+    @Column(length = 128) private String correlationName;
+    private LocalDateTime observedAt;
+    @Column(length = 32) private String observedState;
+    @Builder.Default @Column(nullable = false, length = 24) private String cleanupStatus = "untracked";
+    @Builder.Default @Column(nullable = false) private Integer cleanupAttempts = 0;
+    private LocalDateTime cleanupNextAt;
+    @Column(length = 512) private String cleanupError;
+    private LocalDateTime cleanedAt;
 
     public enum Operation {
         compact, expire_snapshots, orphan_cleanup
@@ -68,6 +99,6 @@ public class TableMaintenanceLog {
     }
 
     public enum Status {
-        running, success, failed, pending
+        running, success, failed, pending, unknown, timed_out
     }
 }

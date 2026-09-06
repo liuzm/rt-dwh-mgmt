@@ -35,10 +35,31 @@ public class SyncTask {
     @Column(nullable = false, length = 20)
     private TaskType taskType;
 
-    @Column(nullable = false)
+    /** Product-level scenario identity, decoupled from the Flink execution adapter. */
+    @Column(nullable = false, length = 64)
+    private String scenarioCode;
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 16)
+    private ExecutionMode executionMode;
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 16)
+    private DefinitionStatus definitionStatus;
+
+    private Long publishedVersionId;
+
+    private Long activeDeploymentId;
+
+    @Column(columnDefinition = "JSON")
+    private String parameterSchemaJson;
+
+    /** Stored only within immutable definition JSON, not the mutable task row. */
+    @Transient private String runtimeConfigJson;
+    @Transient private String runtimeConfigHash;
+
     private Long sourceConfigId;
 
-    @Column(nullable = false)
     private Long targetConfigId;
 
     @Column(columnDefinition = "TEXT")
@@ -106,6 +127,14 @@ public class SyncTask {
 
     public enum TaskType {
         cdc_sync, etl, materialized
+    }
+
+    public enum ExecutionMode {
+        continuous, scheduled
+    }
+
+    public enum DefinitionStatus {
+        draft, published, disabled
     }
 
     public enum TaskStatus {

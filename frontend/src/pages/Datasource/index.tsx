@@ -1,8 +1,102 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { PageContainer, ProForm, ProFormSelect, ProFormText, ProFormDigit, ProFormTextArea } from '@ant-design/pro-components';
-import { Card, Table, Tag, Button, Space, Modal, message, Popconfirm, Descriptions, Badge } from 'antd';
-import { PlusOutlined, ReloadOutlined, LinkOutlined, DisconnectOutlined } from '@ant-design/icons';
+import {
+  PageContainer,
+  ProForm,
+  ProFormDependency,
+  ProFormDigit,
+  ProFormSelect,
+  ProFormText,
+  ProFormTextArea,
+} from '@ant-design/pro-components';
+import { Alert, Badge, Button, Card, Descriptions, Form, Modal, Popconfirm, Space, Table, Tag, message } from 'antd';
+import { DatabaseOutlined, LinkOutlined, PlusOutlined, ReloadOutlined, ThunderboltOutlined } from '@ant-design/icons';
 import { getDatasources, createDatasource, testDatasourceConnection, deleteDatasource, updateDatasource } from '@/api';
+import { useAccess } from '@umijs/max';
+import './index.less';
+
+type DatasourceType = 'mysql' | 'postgresql';
+
+interface DatasourceTemplate {
+  key: string;
+  name: string;
+  description: string;
+  recommended?: boolean;
+  values: {
+    configName: string;
+    dbType: DatasourceType;
+    host: string;
+    port: number;
+    database: string;
+    username: string;
+    password?: string;
+    extraConfig: string;
+  };
+}
+
+const datasourceTemplates: Record<DatasourceType, DatasourceTemplate[]> = {
+  mysql: [
+    {
+      key: 'mysql-compose',
+      name: 'Docker Compose 内置 MySQL',
+      description: '适合整套平台通过 deploy/docker-compose.yml 启动时联调。',
+      recommended: true,
+      values: {
+        configName: 'compose_mysql',
+        dbType: 'mysql',
+        host: 'mysql',
+        port: 3306,
+        database: 'rtdwh_mgmt',
+        username: 'rtdwh_admin',
+        extraConfig: JSON.stringify({ useSSL: false, serverTimezone: 'Asia/Shanghai' }, null, 2),
+      },
+    },
+    {
+      key: 'mysql-local',
+      name: '本地 MySQL 业务库',
+      description: '适合后端通过源码在宿主机运行，连接本机业务数据库。',
+      values: {
+        configName: 'local_mysql',
+        dbType: 'mysql',
+        host: '127.0.0.1',
+        port: 3306,
+        database: 'business_db',
+        username: 'root',
+        extraConfig: JSON.stringify({ useSSL: false, serverTimezone: 'Asia/Shanghai' }, null, 2),
+      },
+    },
+  ],
+  postgresql: [
+    {
+      key: 'postgres-compose',
+      name: 'Docker Compose 内置 PostgreSQL',
+      description: '对应 Compose 中可选的 PostgreSQL 业务源库示例。',
+      recommended: true,
+      values: {
+        configName: 'compose_postgresql',
+        dbType: 'postgresql',
+        host: 'postgresql',
+        port: 5432,
+        database: 'inventory',
+        username: 'rtdwh_admin',
+        extraConfig: JSON.stringify({ schema: 'public', 'decoding.plugin.name': 'pgoutput' }, null, 2),
+      },
+    },
+    {
+      key: 'postgres-local',
+      name: '本地 PostgreSQL 业务库',
+      description: '适合后端通过源码在宿主机运行，连接本机 PostgreSQL。',
+      values: {
+        configName: 'local_postgresql',
+        dbType: 'postgresql',
+        host: '127.0.0.1',
+        port: 5432,
+        database: 'business_db',
+        username: 'postgres',
+        extraConfig: JSON.stringify({ schema: 'public', 'decoding.plugin.name': 'pgoutput' }, null, 2),
+      },
+    },
+  ],
+};
 
 const dbTypeColorMap: Record<string, string> = {
   mysql: 'blue',
@@ -28,6 +122,8 @@ const formatBackendDateTime = (value: unknown) => {
 };
 
 const Datasource: React.FC = () => {
+  const access = useAccess();
+  const [createForm] = Form.useForm();
   const [createModalVisible, setCreateModalVisible] = useState(false);
   const [editModalVisible, setEditModalVisible] = useState(false);
   const [editingDs, setEditingDs] = useState<API.DatasourceConfig | null>(null);
@@ -125,16 +221,35 @@ const Datasource: React.FC = () => {
     }
   };
 
-  // Paimon form fields differ from MySQL/PostgreSQL
-  const isPaimonType = (type: string) => type === 'paimon';
+  const openCreateModal = () => {
+    createForm.resetFields();
+    setCreateModalVisible(true);
+  };
+
+  const applyTemplate = (template: DatasourceTemplate) => {
+    const existingName = createForm.getFieldValue('configName');
+    createForm.setFieldsValue({
+      ...template.values,
+      configName: existingName?.trim() || template.values.configName,
+      password: undefined,
+    });
+    message.success(`已代入“${template.name}”模板，请补充密码并按实际环境调整`);
+  };
 
   return (
     <PageContainer>
       <Card>
+        <Alert
+          type="info"
+          showIcon
+          message="这里仅管理业务源库"
+          description="Paimon Catalog、Metastore 和 Warehouse 是平台运行配置，请在系统设置中统一维护。"
+          style={{ marginBottom: 16 }}
+        />
         <Space style={{ marginBottom: 16 }}>
-          <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateModalVisible(true)}>
+          {access.canManageDatasource && <Button type="primary" icon={<PlusOutlined />} onClick={openCreateModal}>
             新建数据源
-          </Button>
+          </Button>}
           <Button icon={<ReloadOutlined spin={loading} />} onClick={() => void refresh()} loading={loading}>
             刷新
           </Button>
@@ -183,7 +298,7 @@ const Datasource: React.FC = () => {
               title: '操作',
               key: 'action',
               width: 200,
-              render: (_, record) => (
+              render: (_, record) => access.canManageDatasource ? (
                 <Space>
                   <Button
                     size="small"
@@ -206,7 +321,7 @@ const Datasource: React.FC = () => {
                     <Button size="small" type="link" danger>删除</Button>
                   </Popconfirm>
                 </Space>
-              ),
+              ) : <span style={{ color: '#8c8c8c' }}>仅查看</span>,
             },
           ]}
         />
@@ -231,29 +346,35 @@ const Datasource: React.FC = () => {
       </Card>
 
       <Modal
-        title="新建数据源"
+        title={(
+          <div className="datasource-create-title">
+            <span className="datasource-create-title-icon"><DatabaseOutlined /></span>
+            <span>
+              <strong>新建数据源</strong>
+              <small>配置数据库连接与认证信息</small>
+            </span>
+          </div>
+        )}
         open={createModalVisible}
         onCancel={() => setCreateModalVisible(false)}
         footer={null}
-        width={600}
+        width={580}
+        forceRender
+        rootClassName="datasource-create-modal"
       >
         <ProForm
+          form={createForm}
           onFinish={handleCreate}
           submitter={{
             searchConfig: { submitText: '创建' },
-            resetButtonProps: { style: { display: 'none' } },
-          }}
-          onValuesChange={(values) => {
-            // Force re-render when type changes
-            if (values.dbType) {
-              setCreateModalVisible(true);
-            }
+            resetButtonProps: false,
+            render: (_, dom) => <div className="datasource-create-actions">{dom}</div>,
           }}
         >
           <ProFormText
             name="configName"
             label="配置名称"
-            placeholder="例如: business_mysql, ods_paimon"
+            placeholder="例如：business_mysql"
             rules={[{ required: true, message: '请输入配置名称' }]}
           />
           <ProFormSelect
@@ -262,44 +383,84 @@ const Datasource: React.FC = () => {
             options={[
               { label: 'MySQL', value: 'mysql' },
               { label: 'PostgreSQL', value: 'postgresql' },
-              { label: 'Paimon (湖仓)', value: 'paimon' },
             ]}
             rules={[{ required: true }]}
           />
 
-          {/* Conditional fields based on dbType - shown via dependency */}
-          <ProFormText
-            name="host"
-            label="主机地址"
-            placeholder="MySQL/PG: 192.168.1.10 | Paimon: hdfs:///warehouse"
-            rules={[{ required: true }]}
-          />
-          <ProFormDigit
-            name="port"
-            label="端口"
-            placeholder="MySQL: 3306, PG: 5432, Paimon: 不需要"
-            fieldProps={{ min: 1, max: 65535 }}
-          />
-          <ProFormText
-            name="database"
-            label="数据库"
-            placeholder="MySQL/PG: business_db | Paimon: 不需要"
-          />
-          <ProFormText
-            name="username"
-            label="用户名"
-            placeholder="root / pg_user | Paimon: 不需要"
-          />
+          <ProFormDependency name={['dbType']}>
+            {({ dbType }: { dbType?: DatasourceType }) => dbType ? (
+              <div className="datasource-template-panel">
+                <div className="datasource-template-heading">
+                  <span><ThunderboltOutlined /> 快速模板</span>
+                  <small>一键填充非敏感配置，已输入的配置名称会保留</small>
+                </div>
+                <div className="datasource-template-list">
+                  {datasourceTemplates[dbType].map((template) => (
+                    <button key={template.key} type="button" className="datasource-template-item" onClick={() => applyTemplate(template)}>
+                      <span>
+                        <strong>{template.name}</strong>
+                        {template.recommended && <Tag color="blue">推荐</Tag>}
+                      </span>
+                      <small>{template.description}</small>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <div className="datasource-template-empty">选择数据库类型后，可使用对应的一键配置模板</div>
+            )}
+          </ProFormDependency>
+
+          <div className="datasource-form-grid datasource-form-grid-host">
+            <ProFormText
+              name="host"
+              label="主机地址"
+              placeholder="例如：192.168.1.10"
+              rules={[{ required: true }]}
+            />
+            <ProFormDigit
+              name="port"
+              label="端口"
+              placeholder="3306 / 5432"
+              fieldProps={{ min: 1, max: 65535 }}
+              rules={[{ required: true, message: '请输入端口' }]}
+            />
+          </div>
+          <div className="datasource-form-grid">
+            <ProFormText
+              name="database"
+              label="数据库"
+              placeholder="业务数据库"
+              rules={[{ required: true, message: '请输入数据库名称' }]}
+            />
+            <ProFormText
+              name="username"
+              label="用户名"
+              placeholder="数据库用户"
+              rules={[{ required: true, message: '请输入用户名' }]}
+            />
+          </div>
           <ProFormText.Password
             name="password"
             label="密码"
-            placeholder="数据库密码"
+            placeholder="不会由模板自动填写"
+            rules={[{ required: true, message: '请输入数据库密码' }]}
           />
           <ProFormTextArea
             name="extraConfig"
             label="额外配置 (JSON)"
             placeholder='{"hive.metastore.uris": "thrift://hive:9083"}'
             fieldProps={{ autoSize: { minRows: 2, maxRows: 4 } }}
+            rules={[{
+              validator: async (_: unknown, value?: string) => {
+                if (!value?.trim()) return;
+                try {
+                  JSON.parse(value);
+                } catch {
+                  throw new Error('请输入合法的 JSON 配置');
+                }
+              },
+            }]}
           />
         </ProForm>
       </Modal>
@@ -324,7 +485,6 @@ const Datasource: React.FC = () => {
           <ProFormSelect name="dbType" label="数据库类型" disabled options={[
             { label: 'MySQL', value: 'mysql' },
             { label: 'PostgreSQL', value: 'postgresql' },
-            { label: 'Paimon (湖仓)', value: 'paimon' },
           ]} />
           <ProFormText name="host" label="主机地址" rules={[{ required: true }]} />
           <ProFormDigit name="port" label="端口" fieldProps={{ min: 1, max: 65535 }} />

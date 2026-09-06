@@ -240,8 +240,10 @@
         <tr><th>参数</th><th>类型</th><th>必填</th><th>说明</th></tr>
         <tr><td>taskName</td><td>String</td><td class="req">必填</td><td>任务名称</td></tr>
         <tr><td>taskType</td><td>String</td><td class="req">必填</td><td>任务类型：cdc_sync / etl / materialized</td></tr>
-        <tr><td>sourceConfigId</td><td>Long</td><td class="req">必填</td><td>源数据源配置 ID</td></tr>
-        <tr><td>targetConfigId</td><td>Long</td><td class="req">必填</td><td>目标数据源配置 ID</td></tr>
+        <tr><td>scenarioCode</td><td>String</td><td class="req">必填</td><td>产品场景编码</td></tr>
+        <tr><td>executionMode</td><td>String</td><td class="req">必填</td><td>continuous / scheduled</td></tr>
+        <tr><td>sourceConfigId</td><td>Long</td><td class="opt">条件必填</td><td>CDC 业务源数据源配置 ID</td></tr>
+        <tr><td>targetConfigId</td><td>Long</td><td class="opt">兼容字段</td><td>已废弃；目标统一使用系统设置中的 Paimon Catalog</td></tr>
         <tr><td>flinkSql</td><td>String</td><td class="req">必填</td><td>Flink SQL 语句（CDC → Paimon 的完整定义）</td></tr>
         <tr><td>syncStrategy</td><td>String</td><td class="req">必填</td><td>同步策略</td></tr>
         <tr><td>tableMappings</td><td>Object</td><td class="opt">可选</td><td>表映射配置 JSON</td></tr>

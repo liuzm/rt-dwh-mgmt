@@ -44,6 +44,14 @@ public class ReportTemplate {
     @Column(columnDefinition = "JSON")
     private String scheduleConfig;
 
+    @Builder.Default
+    @Column(nullable = false)
+    private Boolean scheduleEnabled = false;
+
+    private LocalDateTime nextRunAt;
+
+    private LocalDateTime lastRunAt;
+
     @Column(nullable = false)
     private Boolean isPublished;
 

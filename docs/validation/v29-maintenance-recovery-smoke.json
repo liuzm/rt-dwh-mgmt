@@ -1,0 +1,41 @@
+{
+  "verified": [
+    "real_paimon_compact",
+    "two_concurrent_requests_one_accepted",
+    "old_endpoint_after_runtime_change",
+    "backend_restart",
+    "cleanup_failure_and_retry_after_restart",
+    "accepted_catalog_response_lost",
+    "accepted_call_response_lost",
+    "no_post_replay",
+    "pre_call_cancellation_only",
+    "frozen_target_permissions",
+    "data_sum_unchanged"
+  ],
+  "manualJobPositiveEvidence": "unit tests only",
+  "faultMethod": "local forwarding proxy drops accepted responses; actual backend container restarts",
+  "ui": "passed; see v30-browser-smoke.json",
+  "cleanup": {
+    "completed": true,
+    "runtimeConfigurationValuesRestored": true,
+    "fixtureStateRemoved": true,
+    "remainingLegacyMaintenance": {
+      "pending": 44,
+      "success": 2
+    },
+    "recoveryEvents": 0,
+    "coordinationRows": 0
+  },
+  "migrationVersionsVerified": [
+    28,
+    29,
+    30
+  ],
+  "backendTests": {
+    "tests": 262,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "deployedJarMatchesTestArtifactSha256": "1dfbabf062144366f943ae5d53ec5fd0592cc8caddc7f9009ffd4fcdefc6a7bf"
+}

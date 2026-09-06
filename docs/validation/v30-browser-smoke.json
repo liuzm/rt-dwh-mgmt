@@ -1,0 +1,46 @@
+{
+  "date": "2026-09-05",
+  "method": "local browser DOM, interactive forms and screenshots inspected via CUA",
+  "maintenance": {
+    "operationId": 54,
+    "checks": [
+      "frozen_endpoint_and_missing_handle",
+      "manual_note_persisted_with_actor_and_revision",
+      "expanded_event_evidence",
+      "unknown_preserved_after_note",
+      "unsafe_reset_and_preparation_cancel_absent",
+      "refresh_evidence",
+      "unknown_status_filter",
+      "date_array_display",
+      "readable_alerts"
+    ],
+    "viewportWidths": [
+      1024,
+      1280,
+      1440
+    ]
+  },
+  "api": {
+    "serviceId": 24,
+    "checks": [
+      "create_draft",
+      "preview_and_publish_v1",
+      "edit_draft_keeps_v1_sql",
+      "publish_v2",
+      "version_detail",
+      "rollback_appends_v3_keeps_draft",
+      "incompatible_column_preview_blocks_publish_and_keeps_v3",
+      "date_array_display"
+    ],
+    "viewportWidths": [
+      1024,
+      1280,
+      1440
+    ],
+    "rollback_failure_dialog": "not exercised in browser; backend negative paths covered separately"
+  },
+  "experimentalEntry": {
+    "native_materialized": "disabled, labelled 实验能力 · 未开放",
+    "viewportWidth": 1280
+  }
+}

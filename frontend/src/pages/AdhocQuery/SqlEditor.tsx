@@ -5,6 +5,7 @@ import 'monaco-editor/languages/definitions/sql/register';
 import type { editor, IDisposable, languages, Position } from 'monaco-editor';
 
 type Props = {
+  height?: string | number;
   value: string;
   catalog?: API.QueryCatalog;
   onChange: (value: string) => void;
@@ -21,7 +22,7 @@ const KEYWORDS = [
   'SHOW CATALOGS', 'SHOW DATABASES', 'SHOW TABLES', 'DESCRIBE', 'EXPLAIN',
 ];
 
-const SqlEditor: React.FC<Props> = ({ value, catalog, onChange, onExecute, onReady }) => {
+const SqlEditor: React.FC<Props> = ({ height = '300px', value, catalog, onChange, onExecute, onReady }) => {
   const disposables = useRef<IDisposable[]>([]);
   const executeRef = useRef(onExecute);
   executeRef.current = onExecute;
@@ -49,7 +50,7 @@ const SqlEditor: React.FC<Props> = ({ value, catalog, onChange, onExecute, onRea
 
     const provider = monaco.languages.registerCompletionItemProvider('sql', {
       triggerCharacters: ['.', ' '],
-      provideCompletionItems: (model, position) => {
+      provideCompletionItems: (model: editor.ITextModel, position: Position) => {
         const before = model.getValueInRange({
           startLineNumber: 1, startColumn: 1,
           endLineNumber: position.lineNumber, endColumn: position.column,
@@ -89,10 +90,10 @@ const SqlEditor: React.FC<Props> = ({ value, catalog, onChange, onExecute, onRea
         }
 
         KEYWORDS.forEach((keyword) => suggestions.push(item(
-          keyword, keyword, monaco.languages.CompletionItemKind.Keyword, 'Flink SQL', range)));
+          keyword, keyword, monaco.languages.CompletionItemKind.Keyword, 'Doris SQL', range)));
         if (catalog) suggestions.push(item(
           catalog.catalogName, catalog.catalogName, monaco.languages.CompletionItemKind.Module,
-          `Paimon Catalog · key=${catalog.catalogKey}`, range));
+          `Doris Paimon Catalog · ${catalog.catalogName}`, range));
         addDatabases();
         databases.forEach((database) => database.tables.forEach((table) => suggestions.push(item(
           `${database.name}.${table.name}`, `${database.name}.${table.name}`,
@@ -114,7 +115,7 @@ const SqlEditor: React.FC<Props> = ({ value, catalog, onChange, onExecute, onRea
 
   return (
     <Editor
-      height="300px"
+      height={height}
       language="sql"
       theme="vs-dark"
       value={value}

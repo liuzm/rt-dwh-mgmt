@@ -6,9 +6,10 @@ import com.rtdwh.dto.QueryCatalogDTO;
 import com.rtdwh.dto.SavedQueryUpsertDTO;
 import com.rtdwh.entity.QueryHistory;
 import com.rtdwh.entity.SavedQuery;
-import com.rtdwh.service.DwhMetaService;
+import com.rtdwh.service.DorisCatalogService;
 import com.rtdwh.service.QueryService;
 import com.rtdwh.service.ReportService;
+import com.rtdwh.service.ReportParameterRenderer;
 import com.rtdwh.service.SavedQueryService;
 import com.rtdwh.util.SecurityContextUtil;
 import jakarta.validation.Valid;
@@ -19,6 +20,7 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.security.access.prepost.PreAuthorize;
 
 import java.util.List;
 import java.util.Map;
@@ -27,13 +29,15 @@ import java.util.Map;
 @RestController
 @RequestMapping("/query")
 @RequiredArgsConstructor
+@PreAuthorize("hasAuthority('query:adhoc')")
 public class QueryController {
 
     private final QueryService queryService;
     private final ReportService reportService;
-    private final DwhMetaService dwhMetaService;
+    private final DorisCatalogService dorisCatalogService;
     private final SavedQueryService savedQueryService;
     private final SecurityContextUtil securityContextUtil;
+    private final ReportParameterRenderer parameterRenderer;
 
     /**
      * Execute an ad-hoc SQL query.
@@ -86,9 +90,20 @@ public class QueryController {
         return ApiResponse.success(queryService.getQueryHistoryPage(userId, page, size));
     }
 
+    @GetMapping("/history/{historyId}/profile")
+    public ApiResponse<Map<String, Object>> getQueryProfile(@PathVariable Long historyId) {
+        return ApiResponse.success(queryService.getQueryProfile(
+                historyId, securityContextUtil.getCurrentUserId()));
+    }
+
     @GetMapping("/catalog")
     public ApiResponse<QueryCatalogDTO> getCatalog() {
-        return ApiResponse.success(dwhMetaService.getQueryCatalog());
+        return ApiResponse.success(dorisCatalogService.getQueryCatalog(securityContextUtil.getCurrentUserId()));
+    }
+
+    @GetMapping("/governance/stats")
+    public ApiResponse<Map<String, Object>> getGovernanceStats() {
+        return ApiResponse.success(queryService.getGovernanceStats(securityContextUtil.getCurrentUserId()));
     }
 
     @GetMapping("/saved")
@@ -123,12 +138,11 @@ public class QueryController {
             @PathVariable Long reportId,
             @RequestBody(required = false) Map<String, Object> params) {
         Long userId = securityContextUtil.getCurrentUserId();
-        com.rtdwh.entity.ReportTemplate report = reportService.getReport(reportId);
+        com.rtdwh.entity.ReportTemplate report = reportService.getReport(reportId, userId);
         if (!Boolean.TRUE.equals(report.getIsPublished())) {
             throw new IllegalStateException("报告尚未发布，无法查询");
         }
-        // Report filters are deliberately not concatenated into SQL. Templates must
-        // contain safe, read-only SQL; parameter binding can be added per connector.
-        return ApiResponse.success(queryService.executeReportQuery(report.getSqlQuery(), userId));
+        String sql = parameterRenderer.render(report.getSqlQuery(), report.getFilterConfig(), params);
+        return ApiResponse.success(queryService.executeReportQuery(sql, userId));
     }
 }

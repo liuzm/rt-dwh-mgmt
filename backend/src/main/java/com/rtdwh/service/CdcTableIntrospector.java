@@ -29,27 +29,36 @@ public class CdcTableIntrospector {
         String decryptedPassword = encryptionUtil.decrypt(config.getPasswordEncrypted());
 
         try (Connection conn = DriverManager.getConnection(url, config.getUsername(), decryptedPassword)) {
-            DatabaseMetaData meta = conn.getMetaData();
-            String catalog = config.getDatabase();
-            ResultSet rs;
-
-            if (config.getDbType() == DatasourceConfig.DbType.mysql) {
-                rs = meta.getTables(catalog, null, "%", new String[]{"TABLE"});
-            } else if (config.getDbType() == DatasourceConfig.DbType.postgresql) {
-                rs = meta.getTables(catalog, "public", "%", new String[]{"TABLE"});
-            } else {
-                return List.of();
-            }
-
+            conn.setReadOnly(true);
             List<String> tables = new ArrayList<>();
-            while (rs.next()) {
-                tables.add(rs.getString("TABLE_NAME"));
+            if (config.getDbType() == DatasourceConfig.DbType.mysql) {
+                String sql = "SELECT TABLE_NAME FROM information_schema.TABLES "
+                        + "WHERE TABLE_SCHEMA = ? AND TABLE_TYPE = 'BASE TABLE' ORDER BY TABLE_NAME";
+                try (PreparedStatement statement = conn.prepareStatement(sql)) {
+                    statement.setString(1, config.getDatabase());
+                    try (ResultSet resultSet = statement.executeQuery()) {
+                        while (resultSet.next()) tables.add(resultSet.getString(1));
+                    }
+                }
+            } else if (config.getDbType() == DatasourceConfig.DbType.postgresql) {
+                String sql = "SELECT table_name FROM information_schema.tables "
+                        + "WHERE table_schema = 'public' AND table_type = 'BASE TABLE' ORDER BY table_name";
+                try (PreparedStatement statement = conn.prepareStatement(sql);
+                     ResultSet resultSet = statement.executeQuery()) {
+                    while (resultSet.next()) tables.add(resultSet.getString(1));
+                }
+            } else {
+                throw new IllegalArgumentException("仅 MySQL 和 PostgreSQL 数据源支持源表探测");
             }
-            rs.close();
+            log.info("Discovered {} tables from datasource {} ({}/{})",
+                    tables.size(), config.getId(), config.getConfigName(), config.getDatabase());
             return tables;
         } catch (SQLException e) {
-            log.error("Failed to list tables for datasource {}: {}", config.getId(), e.getMessage());
-            throw new RuntimeException("获取表列表失败: " + e.getMessage());
+            log.error("Failed to list tables for datasource {} at {}:{}/{}: {}",
+                    config.getId(), config.getHost(), config.getPort(), config.getDatabase(), e.getMessage());
+            throw new RuntimeException(String.format(
+                    "获取表列表失败（%s:%d/%s）: %s",
+                    config.getHost(), config.getPort(), config.getDatabase(), e.getMessage()));
         }
     }
 
@@ -97,10 +106,10 @@ public class CdcTableIntrospector {
     private String buildJdbcUrl(DatasourceConfig config) {
         return switch (config.getDbType()) {
             case mysql -> String.format(
-                    "jdbc:mysql://%s:%d/%s?useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true",
+                    "jdbc:mysql://%s:%d/%s?useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&connectTimeout=5000&socketTimeout=10000",
                     config.getHost(), config.getPort(), config.getDatabase());
             case postgresql -> String.format(
-                    "jdbc:postgresql://%s:%d/%s",
+                    "jdbc:postgresql://%s:%d/%s?connectTimeout=5&socketTimeout=10",
                     config.getHost(), config.getPort(), config.getDatabase());
             default -> throw new IllegalArgumentException("Unsupported datasource type: " + config.getDbType());
         };

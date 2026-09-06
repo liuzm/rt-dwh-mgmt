@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
 import { PageContainer } from '@ant-design/pro-components';
 import { Card, Table, Tag, Space, Select, Button, Badge, Modal, Input, message, Switch, Form } from 'antd';
-import { PlusOutlined } from '@ant-design/icons';
-import { useRequest } from '@umijs/max';
+import { PlusOutlined, ReloadOutlined } from '@ant-design/icons';
+import { useAccess, useRequest } from '@umijs/max';
 import {
   getAlertRules, getAlertRecords, createAlertRule, updateAlertRule,
   deleteAlertRule, toggleAlertRule, resolveAlertRecord,
+  evaluateAlertRules,
 } from '@/api';
 
 const alertLevelColor: Record<string, string> = {
@@ -34,13 +35,14 @@ const channelLabel: Record<string, string> = {
 };
 
 const Alert: React.FC = () => {
+  const access = useAccess();
   const [createRuleVisible, setCreateRuleVisible] = useState(false);
   const [editingRule, setEditingRule] = useState<any>(null);
   const [ruleTypeFilter, setRuleTypeFilter] = useState<string>();
   const [form] = Form.useForm();
 
   const { data: rulesData, loading: rulesLoading, refresh: refreshRules } = useRequest(getAlertRules);
-  const { data: recordsData, loading: recordsLoading, refresh: refreshRecords } = useRequest(getAlertRecords);
+  const { data: recordsData, loading: recordsLoading, refresh: refreshRecords } = useRequest(getAlertRecords, { pollingInterval: 30000 });
 
   const rules = ((rulesData || []) as any[]).filter((rule) => !ruleTypeFilter || rule.ruleType === ruleTypeFilter);
   const records = (recordsData || []) as any[];
@@ -100,12 +102,23 @@ const Alert: React.FC = () => {
     }
   };
 
+  const handleEvaluate = async () => {
+    try {
+      const result = await evaluateAlertRules();
+      message.success(`评估完成：新增 ${result.triggered || 0} 条，恢复 ${result.recovered || 0} 条`);
+      refreshRecords();
+    } catch (e) {
+      message.error('告警评估失败');
+    }
+  };
+
   return (
     <PageContainer className="alert-page">
       <Space className="alert-toolbar" style={{ marginBottom: 32 }}>
-        <Button type="primary" icon={<PlusOutlined />} onClick={() => { setEditingRule(null); form.resetFields(); setCreateRuleVisible(true); }}>
+        {access.canManageAlert && <Button type="primary" icon={<PlusOutlined />} onClick={() => { setEditingRule(null); form.resetFields(); setCreateRuleVisible(true); }}>
           新增告警配置
-        </Button>
+        </Button>}
+        {access.canManageAlert && <Button icon={<ReloadOutlined />} onClick={handleEvaluate}>立即评估</Button>}
         <Select
           value={ruleTypeFilter}
           onChange={setRuleTypeFilter}
@@ -143,16 +156,16 @@ const Alert: React.FC = () => {
                       key: 'enabled',
                       width: 80,
                       render: (v: boolean, record: any) => (
-                        <Switch checked={v} size="small" onChange={(checked) => handleToggle(record.id, checked)} />
+                        <Switch checked={v} size="small" disabled={!access.canManageAlert} onChange={(checked) => handleToggle(record.id, checked)} />
                       ),
                     },
                     {
                       title: '操作', key: 'action', width: 120,
                       render: (_: any, record: any) => (
-                        <Space>
+                        access.canManageAlert ? <Space>
                           <Button size="small" onClick={() => { setEditingRule(record); form.setFieldsValue({ ruleName: record.ruleName, ruleType: record.ruleType, expression: record.expression, channels: (record.notifyChannel || '').split(',').filter(Boolean), enabled: record.enabled }); setCreateRuleVisible(true); }}>编辑</Button>
                           <Button size="small" type="link" danger onClick={() => handleDelete(record.id)}>删除</Button>
-                        </Space>
+                        </Space> : <span style={{ color: '#8c8c8c' }}>仅查看</span>
                       ),
                     },
                   ]}
@@ -169,6 +182,7 @@ const Alert: React.FC = () => {
                     { title: '时间', dataIndex: 'triggeredAt', key: 'time', width: 220, render: (v: string) => v ? new Date(v).toLocaleString('zh-CN') : '—' },
                     { title: '告警', dataIndex: 'ruleType', key: 'rule', width: 220, render: (v: string) => ({ task_failure: 'CDC任务失败告警', data_delay: '延迟超5秒告警', quality_failure: '质量检测失败' }[v] || v) },
                     { title: '内容', dataIndex: 'message', key: 'msg', ellipsis: true },
+                    { title: '通知', dataIndex: 'notificationStatus', key: 'notificationStatus', width: 90, render: (v: string) => v ? <Tag>{v}</Tag> : '—' },
                     {
                       title: '级别',
                       dataIndex: 'level',
@@ -188,7 +202,7 @@ const Alert: React.FC = () => {
                       width: 120,
                       render: (_: any, r: any) => (
                         <Space>
-                          {!r.resolved && <Button size="small" type="primary" onClick={() => handleResolve(r.id)}>标记已解决</Button>}
+                          {access.canManageAlert && !r.resolved && <Button size="small" type="primary" onClick={() => handleResolve(r.id)}>标记已解决</Button>}
                         </Space>
                       ),
                     },

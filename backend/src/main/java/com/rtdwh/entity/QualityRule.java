@@ -46,6 +46,21 @@ public class QualityRule {
     @Column(nullable = false)
     private Boolean enabled = true;
 
+    @Builder.Default
+    @Column(nullable = false, length = 20)
+    private String checkScope = "full_table";
+
+    @Column(length = 100)
+    private String timeColumn;
+
+    @Builder.Default
+    @Column(nullable = false, length = 20)
+    private String emptyPolicy = "fail";
+
+    @Version
+    @Column(nullable = false)
+    private Long version;
+
     @CreationTimestamp
     @Column(updatable = false)
     private LocalDateTime createdAt;

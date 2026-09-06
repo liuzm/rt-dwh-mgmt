@@ -4,6 +4,7 @@ import com.rtdwh.entity.DwhColumnMeta;
 import com.rtdwh.entity.DwhTableMeta;
 import com.rtdwh.dto.DwhSnapshotDTO;
 import com.rtdwh.dto.QueryCatalogDTO;
+import com.rtdwh.dto.DwhMetadataUpdateDTO;
 import com.rtdwh.entity.DwhTableMeta.TableLayer;
 import com.rtdwh.entity.TableMaintenanceLog;
 import com.rtdwh.entity.TableMaintenanceLog.Operation;
@@ -41,6 +42,11 @@ public class DwhMetaService {
     private final TableMaintenanceLogRepository maintenanceLogRepository;
     private final RestTemplate restTemplate;
     private final ObjectMapper objectMapper;
+    private final PaimonMaintenanceService maintenanceService;
+    private final AssetSchemaService assetSchemas;
+
+    @Value("${doris.catalog:rtdwh_paimon}")
+    private String platformCatalog = "rtdwh_paimon";
 
     @Value("${paimon.jdbc-uri}")
     private String paimonJdbcUri;
@@ -83,6 +89,7 @@ public class DwhMetaService {
     public QueryCatalogDTO getQueryCatalog() {
         Map<String, List<QueryCatalogDTO.TableInfo>> grouped = new TreeMap<>();
         for (DwhTableMeta table : tableMetaRepository.findAll()) {
+            if ("doris_view".equals(table.getAssetType()) || "missing".equals(table.getDiscoveryStatus())) continue;
             List<QueryCatalogDTO.ColumnInfo> columns = getTableColumns(table.getId()).stream()
                     .map(column -> new QueryCatalogDTO.ColumnInfo(
                             column.getColumnName(),
@@ -105,10 +112,39 @@ public class DwhMetaService {
     }
 
     @Transactional
+    public DwhTableMeta updateMetadata(Long id, DwhMetadataUpdateDTO dto) {
+        DwhTableMeta table = getTableDetail(id);
+        table.setBusinessDesc(dto.getBusinessDesc());
+        table.setOwner(blankToNull(dto.getOwner()));
+        table.setBusinessDomain(blankToNull(dto.getBusinessDomain()));
+        table.setSensitivityLevel(validateValue(dto.getSensitivityLevel(),
+                Set.of("public", "internal", "confidential", "restricted"), "internal", "敏感级别"));
+        table.setLifecycleStatus(validateValue(dto.getLifecycleStatus(),
+                Set.of("active", "deprecated", "offline"), "active", "生命周期状态"));
+        try {
+            table.setTags(objectMapper.writeValueAsString(dto.getTags() == null ? List.of() : dto.getTags().stream()
+                    .map(String::trim).filter(value -> !value.isBlank()).distinct().limit(20).toList()));
+        } catch (Exception exception) {
+            throw new IllegalArgumentException("标签格式不正确");
+        }
+        return tableMetaRepository.save(table);
+    }
+
+    @Transactional
     public DwhTableMeta updateBusinessDesc(Long id, String businessDesc) {
         DwhTableMeta table = getTableDetail(id);
         table.setBusinessDesc(businessDesc);
         return tableMetaRepository.save(table);
+    }
+
+    private String blankToNull(String value) {
+        return value == null || value.isBlank() ? null : value.trim();
+    }
+
+    private String validateValue(String value, Set<String> allowed, String fallback, String label) {
+        String normalized = value == null || value.isBlank() ? fallback : value.trim().toLowerCase(Locale.ROOT);
+        if (!allowed.contains(normalized)) throw new IllegalArgumentException(label + "不合法: " + value);
+        return normalized;
     }
 
     @Transactional
@@ -209,6 +245,7 @@ public class DwhMetaService {
                     }
 
                     // Update fields from Paimon metastore
+                    markObserved(tableMeta);
                     tableMeta.setSchemaJson(pt.schemaJson);
                     tableMeta.setPartitionKeys(pt.partitionKeys != null ? pt.partitionKeys : "");
                     tableMeta.setPrimaryKeys(pt.primaryKeys != null ? pt.primaryKeys : "");
@@ -276,9 +313,11 @@ public class DwhMetaService {
                 }
             }
 
-            enrichTableFromWarehouse(tableMeta);
+            markObserved(tableMeta);
+            boolean schemaRead = enrichTableFromWarehouse(tableMeta);
+            if (!schemaRead) tableMeta.setSchemaStatus("unknown");
             DwhTableMeta saved = tableMetaRepository.save(tableMeta);
-            upsertColumns(conn, null, database, tableName, saved, saved.getSchemaJson());
+            if (schemaRead) upsertColumns(conn, null, database, tableName, saved, saved.getSchemaJson());
         }
 
         removeStaleUnifiedTables(activeTables);
@@ -310,18 +349,21 @@ public class DwhMetaService {
         }
     }
 
-    private void enrichTableFromWarehouse(DwhTableMeta tableMeta) {
+    private boolean enrichTableFromWarehouse(DwhTableMeta tableMeta) {
+        boolean[] schemaRead = {false};
         Optional<Path> tablePath = resolveLocalTablePath(tableMeta);
         if (tablePath.isEmpty()) {
             log.debug("Warehouse is not a local filesystem path; skipping file enrichment for {}.{}",
                     tableMeta.getPaimonDb(), tableMeta.getPaimonTable());
-            return;
+            return false;
         }
         Path root = tablePath.get();
         try {
             latestNumberedFile(root.resolve("schema"), "schema-").ifPresent(schemaFile -> {
                 try {
                     var schema = objectMapper.readTree(schemaFile.toFile());
+                    if (!schema.path("fields").isArray() || schema.path("fields").isEmpty()) throw new IOException("Schema fields missing");
+                    schemaRead[0] = true;
                     tableMeta.setSchemaJson(schema.toString());
                     tableMeta.setPartitionKeys(joinJsonArray(schema.path("partitionKeys")));
                     tableMeta.setPrimaryKeys(joinJsonArray(schema.path("primaryKeys")));
@@ -366,10 +408,12 @@ public class DwhMetaService {
         } catch (IOException e) {
             log.warn("Failed to inspect Paimon warehouse table {}: {}", root, e.getMessage());
         }
+        return schemaRead[0];
     }
 
     public List<DwhSnapshotDTO> getTableSnapshots(Long tableMetaId) {
         DwhTableMeta table = getTableDetail(tableMetaId);
+        if ("doris_view".equals(table.getAssetType())) return List.of();
         return resolveLocalTablePath(table).map(this::readSnapshots).orElseGet(List::of);
     }
 
@@ -444,13 +488,20 @@ public class DwhMetaService {
         return String.join(",", values);
     }
 
+    private void markObserved(DwhTableMeta table) {
+        table.setCatalogName(platformCatalog);
+        table.setDiscoveryStatus("observed");
+        table.setLastSeenAt(LocalDateTime.now());
+    }
+
     private void removeStaleUnifiedTables(Set<String> activeTables) {
         for (DwhTableMeta existing : tableMetaRepository.findAll()) {
+            if (existing.getCatalogName() != null && !platformCatalog.equals(existing.getCatalogName())) continue;
             String key = existing.getPaimonDb() + "." + existing.getPaimonTable();
-            if (!activeTables.contains(key)) {
-                columnMetaRepository.deleteAll(
-                        columnMetaRepository.findByTableMetaIdOrderBySortOrder(existing.getId()));
-                tableMetaRepository.delete(existing);
+            if (!activeTables.contains(key) && !"unverified".equals(existing.getDiscoveryStatus())) {
+                existing.setDiscoveryStatus("missing");
+                existing.setSchemaStatus("stale");
+                tableMetaRepository.save(existing);
             }
         }
     }
@@ -590,26 +641,9 @@ public class DwhMetaService {
 
         // Save table first (may create new row with generated ID)
         DwhTableMeta saved = tableMetaRepository.save(tableMeta);
-        Long tableMetaId = saved.getId();
 
-        // Delete existing columns and re-insert (full replace strategy)
-        List<DwhColumnMeta> existing = tableMetaId == null ? List.of()
-                : columnMetaRepository.findByTableMetaIdOrderBySortOrder(tableMetaId);
-        Map<String, DwhColumnMeta> existingByName = existing.stream().collect(Collectors.toMap(
-                DwhColumnMeta::getColumnName, column -> column, (left, right) -> left));
-        columnMetaRepository.deleteAll(existing);
-
-        for (DwhColumnMeta col : newColumns) {
-            DwhColumnMeta previous = existingByName.get(col.getColumnName());
-            if (previous != null) {
-                if (col.getBusinessComment() == null || col.getBusinessComment().isBlank()) {
-                    col.setBusinessComment(previous.getBusinessComment());
-                }
-                col.setSourceColumn(previous.getSourceColumn());
-            }
-            col.setTableMetaId(tableMetaId);
-            columnMetaRepository.save(col);
-        }
+        assetSchemas.observe(saved, newColumns, fromMetastore ? "legacy_metastore" : "paimon_schema");
+        tableMetaRepository.save(saved);
     }
 
     /**
@@ -629,13 +663,15 @@ public class DwhMetaService {
             com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
             com.fasterxml.jackson.databind.JsonNode root = mapper.readTree(schemaJson);
             com.fasterxml.jackson.databind.JsonNode fieldsNode = root.isArray() ? root : root.path("fields");
-            if (!fieldsNode.isArray()) return columns;
+            if (!fieldsNode.isArray() || fieldsNode.isEmpty()) throw new IllegalArgumentException("Schema fields missing or empty");
 
             int sortOrder = 0;
             for (com.fasterxml.jackson.databind.JsonNode field : fieldsNode) {
                 DwhColumnMeta col = new DwhColumnMeta();
                 col.setColumnName(field.path("name").asText());
-                String rawType = field.path("type").asText("STRING");
+                if (!field.hasNonNull("type")) throw new IllegalArgumentException("Schema column type missing");
+                String rawType = field.get("type").isTextual() ? field.get("type").asText() : field.get("type").toString();
+                if (field.path("id").isIntegralNumber()) col.setEngineFieldId(field.get("id").asLong());
                 boolean notNull = rawType.toUpperCase(Locale.ROOT).endsWith(" NOT NULL");
                 col.setColumnType(rawType.replaceFirst("(?i)\\s+NOT NULL$", ""));
                 col.setBusinessComment(field.path("comment").asText(null));
@@ -646,7 +682,7 @@ public class DwhMetaService {
                 columns.add(col);
             }
         } catch (Exception e) {
-            log.warn("Failed to parse Paimon schema JSON: {}", e.getMessage());
+            throw new IllegalArgumentException("Paimon Schema 解析失败，保留原字段契约", e);
         }
         return columns;
     }
@@ -660,7 +696,6 @@ public class DwhMetaService {
      * Remove stale table entries: tables that exist in our management DB but no longer in Paimon.
      */
     private void removeStaleTables(List<String> paimonDatabases, Connection conn, String tableMetaTable) {
-        List<DwhTableMeta> allExisting = tableMetaRepository.findAll();
         Set<String> activePaimonTables = new HashSet<>();
 
         for (String db : paimonDatabases) {
@@ -674,19 +709,11 @@ public class DwhMetaService {
                 }
             } catch (SQLException e) {
                 log.debug("Skip stale check for database '{}': {}", db, e.getMessage());
+                return; // An incomplete catalog listing is not evidence that a table disappeared.
             }
         }
 
-        for (DwhTableMeta existing : allExisting) {
-            String key = existing.getPaimonDb() + "." + existing.getPaimonTable();
-            if (!activePaimonTables.contains(key)) {
-                log.info("Removing stale table entry: {}", key);
-                // Delete columns first
-                columnMetaRepository.findByTableMetaIdOrderBySortOrder(existing.getId())
-                        .forEach(columnMetaRepository::delete);
-                tableMetaRepository.delete(existing);
-            }
-        }
+        removeStaleUnifiedTables(activePaimonTables);
     }
 
     /**
@@ -695,9 +722,12 @@ public class DwhMetaService {
      */
     public Map<String, Object> triggerCompact(Long tableMetaId, String compactStrategy) {
         DwhTableMeta table = getTableDetail(tableMetaId);
+        if ("doris_view".equals(table.getAssetType())) throw new IllegalArgumentException("普通 View 不支持 Paimon 表维护");
+        if ("missing".equals(table.getDiscoveryStatus())) throw new IllegalStateException("Catalog 当前未发现该资产，请重新同步后再维护");
         log.info("Triggering {} compact on table: {}.{}", compactStrategy, table.getPaimonDb(), table.getPaimonTable());
 
-        String sql = String.format("CALL sys.compact('%s.%s', '%s')",
+        if (!List.of("minor", "full").contains(compactStrategy)) throw new IllegalArgumentException("不支持的 Compact 策略");
+        String sql = String.format("CALL sys.compact(`table` => '%s.%s', compact_strategy => '%s')",
                 table.getPaimonDb(), table.getPaimonTable(), compactStrategy);
 
         // Record maintenance log
@@ -709,19 +739,7 @@ public class DwhMetaService {
                 .sqlContent(sql)
                 .startedAt(java.time.LocalDateTime.now())
                 .build();
-        maintenanceLogRepository.save(logEntry);
-
-        Map<String, Object> result = executePaimonCall(sql, table, "compact", compactStrategy);
-
-        // Update log status based on result
-        String statusStr = (String) result.get("status");
-        if ("pending".equals(statusStr)) {
-            logEntry.setStatus(Status.pending);
-        }
-        logEntry.setOperationId((String) result.get("operationId"));
-        maintenanceLogRepository.save(logEntry);
-
-        return result;
+        return maintenanceService.start(logEntry);
     }
 
     /**
@@ -729,10 +747,12 @@ public class DwhMetaService {
      */
     public Map<String, Object> triggerExpireSnapshots(Long tableMetaId, int retainLast) {
         DwhTableMeta table = getTableDetail(tableMetaId);
+        if ("doris_view".equals(table.getAssetType())) throw new IllegalArgumentException("普通 View 不支持 Paimon 表维护");
+        if ("missing".equals(table.getDiscoveryStatus())) throw new IllegalStateException("Catalog 当前未发现该资产，请重新同步后再维护");
         log.info("Triggering expire snapshots on table: {}.{}, retainLast: {}", table.getPaimonDb(), table.getPaimonTable(), retainLast);
 
-        // Paimon expire_snapshots: CALL sys.expire_snapshots('db.table', retainLast)
-        String sql = String.format("CALL sys.expire_snapshots('%s.%s', %d)",
+        // Paimon 2.x / Flink 1.19+ requires named procedure arguments.
+        String sql = String.format("CALL sys.expire_snapshots(`table` => '%s.%s', retain_max => %d)",
                 table.getPaimonDb(), table.getPaimonTable(), retainLast);
 
         // Record maintenance log
@@ -744,18 +764,7 @@ public class DwhMetaService {
                 .sqlContent(sql)
                 .startedAt(java.time.LocalDateTime.now())
                 .build();
-        maintenanceLogRepository.save(logEntry);
-
-        Map<String, Object> result = executePaimonCall(sql, table, "expire_snapshots", "retainLast=" + retainLast);
-
-        String statusStr = (String) result.get("status");
-        if ("pending".equals(statusStr)) {
-            logEntry.setStatus(Status.pending);
-        }
-        logEntry.setOperationId((String) result.get("operationId"));
-        maintenanceLogRepository.save(logEntry);
-
-        return result;
+        return maintenanceService.start(logEntry);
     }
 
     /**
@@ -763,6 +772,8 @@ public class DwhMetaService {
      */
     public Map<String, Object> triggerOrphanCleanup(Long tableMetaId) {
         DwhTableMeta table = getTableDetail(tableMetaId);
+        if ("doris_view".equals(table.getAssetType())) throw new IllegalArgumentException("普通 View 不支持 Paimon 表维护");
+        if ("missing".equals(table.getDiscoveryStatus())) throw new IllegalStateException("Catalog 当前未发现该资产，请重新同步后再维护");
         log.info("Triggering orphan cleanup on table: {}.{}", table.getPaimonDb(), table.getPaimonTable());
 
         String sql = String.format("CALL sys.remove_orphan_files('%s.%s')",
@@ -777,18 +788,7 @@ public class DwhMetaService {
                 .sqlContent(sql)
                 .startedAt(java.time.LocalDateTime.now())
                 .build();
-        maintenanceLogRepository.save(logEntry);
-
-        Map<String, Object> result = executePaimonCall(sql, table, "orphan_cleanup", "");
-
-        String statusStr = (String) result.get("status");
-        if ("pending".equals(statusStr)) {
-            logEntry.setStatus(Status.pending);
-        }
-        logEntry.setOperationId((String) result.get("operationId"));
-        maintenanceLogRepository.save(logEntry);
-
-        return result;
+        return maintenanceService.start(logEntry);
     }
 
     /** Trigger compaction for all matching tables. Individual failures do not stop the batch. */
@@ -820,9 +820,12 @@ public class DwhMetaService {
         int triggered = 0;
         List<Map<String, Object>> failures = new ArrayList<>();
         for (DwhTableMeta table : tables) {
+            if ("doris_view".equals(table.getAssetType())) continue;
             try {
-                operation.apply(table);
-                triggered++;
+                Map<String, Object> outcome = operation.apply(table);
+                if (List.of("running", "success").contains(outcome.get("status"))) triggered++;
+                else failures.add(Map.of("tableId", table.getId(), "table", table.getPaimonDb() + "." + table.getPaimonTable(),
+                        "message", outcome.getOrDefault("message", "执行结果待确认")));
             } catch (RuntimeException exception) {
                 failures.add(Map.of(
                         "tableId", table.getId(),
@@ -845,115 +848,8 @@ public class DwhMetaService {
         return maintenanceLogRepository.searchLogs(operation, status, tableMetaId);
     }
 
-    /**
-     * Execute a Paimon CALL procedure via Flink SQL Gateway.
-     * If SQL Gateway is not available, creates a maintenance log entry with status=pending
-     * that needs to be manually executed.
-     */
-    private Map<String, Object> executePaimonCall(String sql, DwhTableMeta table, String operation, String detail) {
-        if (sqlGatewayEnabled) {
-            try {
-                // Submit via SQL Gateway using FlinkClusterService
-                Map<String, Object> result = submitPaimonCallViaSqlGateway(sql);
-                String operationId = (String) result.getOrDefault("operationId", String.valueOf(System.currentTimeMillis()));
-
-                log.info("Paimon CALL submitted via SQL Gateway: operation={}, operationId={}", operation, operationId);
-                return Map.of(
-                        "operationId", operationId,
-                        "status", "running",
-                        "operation", operation,
-                        "table", table.getPaimonDb() + "." + table.getPaimonTable(),
-                        "detail", detail,
-                        "message", operation + " triggered for " + table.getPaimonDb() + "." + table.getPaimonTable()
-                );
-            } catch (Exception e) {
-                log.error("SQL Gateway submission failed for {}: {}", operation, e.getMessage());
-                return Map.of(
-                        "operationId", String.valueOf(System.currentTimeMillis()),
-                        "status", "pending",
-                        "operation", operation,
-                        "table", table.getPaimonDb() + "." + table.getPaimonTable(),
-                        "detail", detail,
-                        "message", operation + " requires manual execution (SQL Gateway unavailable: " + e.getMessage() + ")"
-                );
-            }
-        }
-
-        // No SQL Gateway: log the operation as pending, return info for manual execution
-        log.info("No SQL Gateway available. Paimon {} operation for {}.{} recorded as pending.",
-                operation, table.getPaimonDb(), table.getPaimonTable());
-
-        return Map.of(
-                "operationId", String.valueOf(System.currentTimeMillis()),
-                "status", "pending",
-                "operation", operation,
-                "table", table.getPaimonDb() + "." + table.getPaimonTable(),
-                "detail", detail,
-                "sql", sql,
-                "message", operation + " operation recorded. Enable Flink SQL Gateway for automatic execution, or run manually: " + sql
-        );
-    }
-
-    /**
-     * Submit a Paimon CALL statement via Flink SQL Gateway.
-     */
-    private Map<String, Object> submitPaimonCallViaSqlGateway(String sql) {
-        // Create session
-        org.springframework.http.HttpHeaders headers = new org.springframework.http.HttpHeaders();
-        headers.setContentType(org.springframework.http.MediaType.APPLICATION_JSON);
-
-        Map<String, Object> sessionPayload = Map.of("sessionConfig", Map.of());
-        org.springframework.http.HttpEntity<Map<String, Object>> sessionReq =
-                new org.springframework.http.HttpEntity<>(sessionPayload, headers);
-
-        org.springframework.http.ResponseEntity<String> sessionResp = restTemplate.postForEntity(
-                sqlGatewayUrl + "/v1/sessions", sessionReq, String.class);
-
-        String sessionId = null;
-        if (sessionResp.getStatusCode().is2xxSuccessful() && sessionResp.getBody() != null) {
-            try {
-                com.fasterxml.jackson.databind.JsonNode json = objectMapper.readTree(sessionResp.getBody());
-                sessionId = json.path("sessionId").asText();
-            } catch (Exception e) {
-                throw new RuntimeException("Failed to parse SQL Gateway session response: " + e.getMessage());
-            }
-        }
-
-        if (sessionId == null) {
-            throw new RuntimeException("Failed to create SQL Gateway session");
-        }
-
-        try {
-            // Execute CALL statement
-            Map<String, Object> stmtPayload = new LinkedHashMap<>();
-            stmtPayload.put("statement", sql);
-
-            org.springframework.http.HttpEntity<Map<String, Object>> stmtReq =
-                    new org.springframework.http.HttpEntity<>(stmtPayload, headers);
-
-            org.springframework.http.ResponseEntity<String> stmtResp = restTemplate.postForEntity(
-                    sqlGatewayUrl + "/v1/sessions/" + sessionId + "/statements",
-                    stmtReq, String.class);
-
-            if (stmtResp.getStatusCode().is2xxSuccessful() && stmtResp.getBody() != null) {
-                try {
-                    com.fasterxml.jackson.databind.JsonNode json = objectMapper.readTree(stmtResp.getBody());
-                    String operationId = json.path("operationId").asText();
-                    return Map.of("sessionId", sessionId, "operationId", operationId);
-                } catch (Exception e) {
-                    throw new RuntimeException("Failed to parse SQL Gateway statement response: " + e.getMessage());
-                }
-            }
-            throw new RuntimeException("SQL Gateway statement submission failed: HTTP " + stmtResp.getStatusCode());
-        } finally {
-            // Clean up session
-            try {
-                restTemplate.delete(sqlGatewayUrl + "/v1/sessions/" + sessionId);
-                log.debug("SQL Gateway session {} cleaned up after CALL", sessionId);
-            } catch (Exception cleanupEx) {
-                log.warn("Failed to clean up SQL Gateway session {}: {}", sessionId, cleanupEx.getMessage());
-            }
-        }
+    public List<TableMaintenanceLog> getMaintenanceLogs(Long tableMetaId, Operation operation, Status status, Long actor) {
+        return maintenanceService.logs(tableMetaId, operation, status, actor);
     }
 
     // Helper class for Paimon table info from metastore

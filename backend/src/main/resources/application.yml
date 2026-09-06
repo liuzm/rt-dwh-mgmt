@@ -44,6 +44,14 @@ spring:
         globally_quoted_identifiers: true
         globally_quoted_identifiers_skip_column_definitions: true
 
+  # Flyway owns explicit platform migrations. Hibernate update remains temporarily
+  # enabled for legacy tables until the complete historical baseline is consolidated.
+  flyway:
+    enabled: true
+    baseline-on-migrate: true
+    baseline-version: 0
+    validate-on-migrate: true
+
   mail:
     host: ${MAIL_HOST:smtp.example.com}
     port: ${MAIL_PORT:465}
@@ -53,6 +61,9 @@ spring:
       mail:
         smtp:
           auth: true
+          connectiontimeout: 10000
+          timeout: 30000
+          writetimeout: 30000
           ssl:
             enable: true
 
@@ -87,6 +98,12 @@ flink:
   sql-gateway:
     enabled: ${SQL_GATEWAY_ENABLED:true}
     url: ${SQL_GATEWAY_URL:http://localhost:9083}
+  scaling:
+    # standalone observes/rescales jobs but cannot create TaskManagers;
+    # kubernetes-native lets Flink's ResourceManager allocate them on demand.
+    provider: ${FLINK_SCALING_PROVIDER:standalone}
+    min-parallelism: ${FLINK_SCALING_MIN_PARALLELISM:1}
+    max-parallelism: ${FLINK_SCALING_MAX_PARALLELISM:128}
   status-monitor:
     enabled: true
     interval-seconds: 30  # Poll every 30 seconds
@@ -113,9 +130,39 @@ encryption:
 
 # Query Configuration
 query:
+  engine: doris
   max-rows: 1000
   max-export-rows: 50000
   timeout-seconds: 60
+  max-concurrent-per-user: ${QUERY_MAX_CONCURRENT_PER_USER:2}
+  queue-wait-seconds: ${QUERY_QUEUE_WAIT_SECONDS:3}
+  budget:
+    scanned-bytes: ${QUERY_BUDGET_SCANNED_BYTES:5368709120}
+    cpu-ms: ${QUERY_BUDGET_CPU_MS:30000}
+    peak-memory-bytes: ${QUERY_BUDGET_PEAK_MEMORY_BYTES:2147483648}
+
+# Doris serves interactive queries over its MySQL-compatible FE endpoint.
+doris:
+  enabled: ${DORIS_ENABLED:true}
+  jdbc-url: ${DORIS_JDBC_URL:jdbc:mysql://localhost:9030}
+  http-url: ${DORIS_HTTP_URL:http://localhost:8030}
+  username: ${DORIS_USERNAME:root}
+  password: ${DORIS_PASSWORD:}
+  catalog: ${DORIS_CATALOG:rtdwh_paimon}
+  database: ${DORIS_DATABASE:ods}
+  initialize-catalog: ${DORIS_INITIALIZE_CATALOG:true}
+  workload-group: ${DORIS_WORKLOAD_GROUP:rtdwh_adhoc}
+  exec-mem-limit-bytes: ${DORIS_EXEC_MEM_LIMIT_BYTES:2147483648}
+  paimon-warehouse-path: ${DORIS_PAIMON_WAREHOUSE:/data/paimon}
+  paimon-jdbc-uri: "${DORIS_PAIMON_JDBC_URI:jdbc:mysql://mysql:3306/rtdwh_paimon_meta?useUnicode=true&characterEncoding=utf8&useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Shanghai}"
+  paimon-jdbc-driver-url: ${DORIS_PAIMON_JDBC_DRIVER_URL:https://repo1.maven.org/maven2/com/mysql/mysql-connector-j/8.4.0/mysql-connector-j-8.4.0.jar}
+  # 0 disables only the Paimon table-object cache so each query sees the latest snapshot.
+  paimon-table-cache-ttl-seconds: ${DORIS_PAIMON_TABLE_CACHE_TTL_SECONDS:0}
+  catalog-init:
+    retry-ms: ${DORIS_CATALOG_INIT_RETRY_MS:30000}
+  pool:
+    maximum-size: ${DORIS_POOL_MAXIMUM_SIZE:10}
+    connection-timeout-ms: ${DORIS_CONNECTION_TIMEOUT_MS:5000}
 
 # Alert Configuration
 alert:
@@ -123,6 +170,42 @@ alert:
   wecom-webhook: ${WECOM_WEBHOOK:}
   email-recipients: ${ALERT_EMAIL_RECIPIENTS:admin@example.com}
   email-from: ${ALERT_EMAIL_FROM:rtdwh-alert@example.com}
+  schedule:
+    enabled: ${ALERT_SCHEDULE_ENABLED:true}
+    interval-ms: ${ALERT_SCHEDULE_INTERVAL_MS:30000}
+    initial-delay-ms: ${ALERT_SCHEDULE_INITIAL_DELAY_MS:15000}
+
+quality:
+  schedule:
+    timezone: ${QUALITY_SCHEDULE_TIMEZONE:Asia/Shanghai}
+    enabled: ${QUALITY_SCHEDULE_ENABLED:true}
+    interval-ms: ${QUALITY_SCHEDULE_INTERVAL_MS:3600000}
+    initial-delay-ms: ${QUALITY_SCHEDULE_INITIAL_DELAY_MS:60000}
+
+report:
+  schedule:
+    enabled: ${REPORT_SCHEDULE_ENABLED:true}
+    interval-ms: ${REPORT_SCHEDULE_INTERVAL_MS:30000}
+    initial-delay-ms: ${REPORT_SCHEDULE_INITIAL_DELAY_MS:30000}
+
+workflow:
+  schedule-trigger:
+    enabled: ${WORKFLOW_SCHEDULE_TRIGGER_ENABLED:true}
+    interval-ms: ${WORKFLOW_SCHEDULE_TRIGGER_INTERVAL_MS:10000}
+    initial-delay-ms: ${WORKFLOW_SCHEDULE_TRIGGER_INITIAL_DELAY_MS:15000}
+  scheduler:
+    enabled: ${WORKFLOW_SCHEDULER_ENABLED:true}
+    dependency-check-ms: ${WORKFLOW_DEPENDENCY_CHECK_MS:10000}
+    initial-delay-ms: ${WORKFLOW_INITIAL_DELAY_MS:10000}
+  runner:
+    enabled: ${WORKFLOW_RUNNER_ENABLED:false}
+    executor-id: ${WORKFLOW_RUNNER_EXECUTOR_ID:internal-flink-sql}
+    interval-ms: ${WORKFLOW_RUNNER_INTERVAL_MS:5000}
+    initial-delay-ms: ${WORKFLOW_RUNNER_INITIAL_DELAY_MS:15000}
+    max-concurrent: ${WORKFLOW_RUNNER_MAX_CONCURRENT:2}
+    lease-seconds: ${WORKFLOW_RUNNER_LEASE_SECONDS:60}
+    max-retries: ${WORKFLOW_RUNNER_MAX_RETRIES:3}
+    retry-backoff-seconds: ${WORKFLOW_RUNNER_RETRY_BACKOFF_SECONDS:30}
 
 # CDC Configuration
 cdc:

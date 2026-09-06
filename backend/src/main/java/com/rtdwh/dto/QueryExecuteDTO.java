@@ -21,4 +21,10 @@ public class QueryExecuteDTO {
 
     @Pattern(regexp = "^[A-Za-z0-9_-]{8,64}$", message = "请求ID格式不正确")
     private String requestId;
+
+    @Pattern(regexp = "^[A-Za-z_][A-Za-z0-9_]*$", message = "Catalog 名称格式不正确")
+    private String catalog;
+
+    @Pattern(regexp = "^[A-Za-z_][A-Za-z0-9_]*$", message = "数据库名称格式不正确")
+    private String database;
 }

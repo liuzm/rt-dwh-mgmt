@@ -53,7 +53,8 @@ public class SystemHealthStatusService {
         Map<String, Object> flink = componentMap(result, "flink");
         Map<String, Object> paimon = componentMap(result, "paimon");
         Map<String, Object> mysql = componentMap(result, "mysql");
-        result.put("overall", healthCheckService.determineOverallStatus(flink, paimon, mysql));
+        Map<String, Object> doris = componentMap(result, "doris");
+        result.put("overall", healthCheckService.determineOverallStatus(flink, paimon, mysql, doris));
         result.put("checkedAt", Instant.now().toString());
         result.put("durationMs", System.currentTimeMillis() - startedAt);
         result.put("source", normalizeSource(source));
@@ -96,6 +97,7 @@ public class SystemHealthStatusService {
         result.put("flink", unknownComponent());
         result.put("paimon", unknownComponent());
         result.put("mysql", unknownComponent());
+        result.put("doris", unknownComponent());
         result.put("durationMs", 0L);
         result.put("source", "none");
         return result;

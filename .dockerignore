@@ -1,0 +1,9 @@
+.git
+**/.env
+**/*.env
+**/*.env.local
+**/node_modules
+**/target
+**/dist
+**/.idea
+**/.DS_Store

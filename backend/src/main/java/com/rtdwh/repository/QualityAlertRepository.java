@@ -11,6 +11,11 @@ import java.util.List;
 public interface QualityAlertRepository extends JpaRepository<QualityAlert, Long> {
 
     List<QualityAlert> findByResolved(Boolean resolved);
+    long countByResolvedFalse();
+
+    List<QualityAlert> findByResolvedFalseOrderByTriggeredAtDesc();
+
+    List<QualityAlert> findByRuleIdAndResolvedFalseOrderByTriggeredAtDesc(Long ruleId);
 
     List<QualityAlert> findByLevel(String level);
 

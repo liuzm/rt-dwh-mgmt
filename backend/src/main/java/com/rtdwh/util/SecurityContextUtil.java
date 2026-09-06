@@ -36,6 +36,12 @@ public class SecurityContextUtil {
         return authentication.getName();
     }
 
+    public boolean hasAuthority(String authority) {
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        return authentication != null && authentication.isAuthenticated() && authentication.getAuthorities().stream()
+                .anyMatch(value -> authority.equals(value.getAuthority()));
+    }
+
     public HttpServletRequest getCurrentRequest() {
         ServletRequestAttributes attributes = (ServletRequestAttributes) RequestContextHolder.getRequestAttributes();
         if (attributes == null) {

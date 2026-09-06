@@ -15,10 +15,15 @@ public class SyncTaskCreateDTO {
     @NotNull(message = "任务类型不能为空")
     private String taskType; // cdc_sync, etl, materialized
 
-    @NotNull(message = "源数据源配置ID不能为空")
+    @Size(max = 64, message = "场景编码长度不能超过64")
+    @Pattern(regexp = "^[a-z][a-z0-9_]*$", message = "场景编码只能包含小写字母、数字和下划线")
+    private String scenarioCode;
+
+    @Pattern(regexp = "^(continuous|scheduled)$", message = "运行方式只能是 continuous 或 scheduled")
+    private String executionMode;
+
     private Long sourceConfigId;
 
-    @NotNull(message = "目标数据源配置ID不能为空")
     private Long targetConfigId;
 
     @NotBlank(message = "Flink SQL不能为空")

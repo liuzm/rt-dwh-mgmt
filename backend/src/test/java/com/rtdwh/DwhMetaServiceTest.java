@@ -46,24 +46,24 @@ class DwhMetaServiceTest {
     }
 
     @Test
-    @DisplayName("触发 Compact 操作 - 应返回 running 状态")
+    @DisplayName("触发 Compact 操作 - 返回已提交或等待状态")
     void testTriggerCompact() {
         try {
             var result = dwhMetaService.triggerCompact(1L, "minor");
             assertNotNull(result);
-            assertEquals("running", result.get("status"));
+            assertTrue(List.of("running", "pending").contains(result.get("status")));
         } catch (RuntimeException e) {
             System.out.println("Test skipped: Table not found");
         }
     }
 
     @Test
-    @DisplayName("触发快照过期清理 - 应返回 running 状态")
+    @DisplayName("触发快照过期清理 - 返回已提交或等待状态")
     void testTriggerExpireSnapshots() {
         try {
             var result = dwhMetaService.triggerExpireSnapshots(1L, 10);
             assertNotNull(result);
-            assertEquals("running", result.get("status"));
+            assertTrue(List.of("running", "pending").contains(result.get("status")));
         } catch (RuntimeException e) {
             System.out.println("Test skipped: Table not found");
         }

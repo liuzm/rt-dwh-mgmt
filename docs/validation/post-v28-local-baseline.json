@@ -1,0 +1,191 @@
+{
+  "capturedAt": "2026-09-05T08:00:37.472795+00:00",
+  "gitHead": "0046f3ce4ae68a61addba71122e35a771b22fb85",
+  "workingTreeDirty": true,
+  "mode": "single-host Compose; read-only inventory and sequential idle HTTP samples",
+  "containers": [
+    {
+      "name": "/deploy-flink-taskmanager-1",
+      "imageId": "sha256:a48b7392b035a2ab1aa0cb0c015e6a441d81d857a2517505d079c47859428946",
+      "imageTag": "rtdwh-flink:2.2.1",
+      "state": "running",
+      "mounts": [
+        {
+          "type": "volume",
+          "target": "/tmp/flink-savepoints",
+          "sourceHash": "92cee3fdeed6cdee1fb4534db836ff7765c35afe7b1eef7b14d516049d9d86d8",
+          "hostSourceHash": "92cee3fdeed6cdee1fb4534db836ff7765c35afe7b1eef7b14d516049d9d86d8"
+        },
+        {
+          "type": "bind",
+          "target": "/data/paimon",
+          "sourceHash": "40176dc0e56920ade3ac96eb7beaa9d2117423a9b0f932c46eb431160579a16f",
+          "hostSourceHash": "b081ca121ad2537dfbdd81200282e0053373095a6a6362f195782d87d6e30a79"
+        }
+      ],
+      "repoDigests": [
+        "rtdwh-flink@sha256:a48b7392b035a2ab1aa0cb0c015e6a441d81d857a2517505d079c47859428946"
+      ]
+    },
+    {
+      "name": "/rtdwh-backend",
+      "imageId": "sha256:6f7dd722462fb7661656b3a3fbe4495b57992bfa4fe515f9ba8905e5388946f2",
+      "imageTag": "deploy-rtdwh-backend",
+      "state": "running",
+      "mounts": [
+        {
+          "type": "bind",
+          "target": "/data/paimon",
+          "sourceHash": "b081ca121ad2537dfbdd81200282e0053373095a6a6362f195782d87d6e30a79",
+          "hostSourceHash": "b081ca121ad2537dfbdd81200282e0053373095a6a6362f195782d87d6e30a79"
+        },
+        {
+          "type": "volume",
+          "target": "/tmp/flink-savepoints",
+          "sourceHash": "92cee3fdeed6cdee1fb4534db836ff7765c35afe7b1eef7b14d516049d9d86d8",
+          "hostSourceHash": "92cee3fdeed6cdee1fb4534db836ff7765c35afe7b1eef7b14d516049d9d86d8"
+        }
+      ],
+      "repoDigests": [
+        "deploy-rtdwh-backend@sha256:6f7dd722462fb7661656b3a3fbe4495b57992bfa4fe515f9ba8905e5388946f2"
+      ]
+    },
+    {
+      "name": "/rtdwh-doris-be",
+      "imageId": "sha256:9f84a8b018069cd3c9a65af42ff5ef2c733b3b25e1ca708e0a3e4078361a1eb3",
+      "imageTag": "apache/doris:be-4.1.3",
+      "state": "running",
+      "mounts": [
+        {
+          "type": "bind",
+          "target": "/data/paimon",
+          "sourceHash": "40176dc0e56920ade3ac96eb7beaa9d2117423a9b0f932c46eb431160579a16f",
+          "hostSourceHash": "b081ca121ad2537dfbdd81200282e0053373095a6a6362f195782d87d6e30a79"
+        }
+      ],
+      "repoDigests": [
+        "apache/doris@sha256:9f84a8b018069cd3c9a65af42ff5ef2c733b3b25e1ca708e0a3e4078361a1eb3"
+      ]
+    },
+    {
+      "name": "/rtdwh-doris-fe",
+      "imageId": "sha256:3dd47644cd9fa8152028bdae449e77170ab0de004bd7a3fa311a204a106c26c7",
+      "imageTag": "apache/doris:fe-4.1.3",
+      "state": "running",
+      "mounts": [
+        {
+          "type": "bind",
+          "target": "/data/paimon",
+          "sourceHash": "b081ca121ad2537dfbdd81200282e0053373095a6a6362f195782d87d6e30a79",
+          "hostSourceHash": "b081ca121ad2537dfbdd81200282e0053373095a6a6362f195782d87d6e30a79"
+        }
+      ],
+      "repoDigests": [
+        "apache/doris@sha256:3dd47644cd9fa8152028bdae449e77170ab0de004bd7a3fa311a204a106c26c7"
+      ]
+    },
+    {
+      "name": "/rtdwh-flink-jobmanager",
+      "imageId": "sha256:a48b7392b035a2ab1aa0cb0c015e6a441d81d857a2517505d079c47859428946",
+      "imageTag": "rtdwh-flink:2.2.1",
+      "state": "running",
+      "mounts": [
+        {
+          "type": "bind",
+          "target": "/data/paimon",
+          "sourceHash": "40176dc0e56920ade3ac96eb7beaa9d2117423a9b0f932c46eb431160579a16f",
+          "hostSourceHash": "b081ca121ad2537dfbdd81200282e0053373095a6a6362f195782d87d6e30a79"
+        },
+        {
+          "type": "volume",
+          "target": "/tmp/flink-savepoints",
+          "sourceHash": "92cee3fdeed6cdee1fb4534db836ff7765c35afe7b1eef7b14d516049d9d86d8",
+          "hostSourceHash": "92cee3fdeed6cdee1fb4534db836ff7765c35afe7b1eef7b14d516049d9d86d8"
+        }
+      ],
+      "repoDigests": [
+        "rtdwh-flink@sha256:a48b7392b035a2ab1aa0cb0c015e6a441d81d857a2517505d079c47859428946"
+      ]
+    },
+    {
+      "name": "/rtdwh-flink-sql-gateway",
+      "imageId": "sha256:a48b7392b035a2ab1aa0cb0c015e6a441d81d857a2517505d079c47859428946",
+      "imageTag": "rtdwh-flink:2.2.1",
+      "state": "running",
+      "mounts": [
+        {
+          "type": "bind",
+          "target": "/data/paimon",
+          "sourceHash": "b081ca121ad2537dfbdd81200282e0053373095a6a6362f195782d87d6e30a79",
+          "hostSourceHash": "b081ca121ad2537dfbdd81200282e0053373095a6a6362f195782d87d6e30a79"
+        },
+        {
+          "type": "volume",
+          "target": "/tmp/flink-savepoints",
+          "sourceHash": "92cee3fdeed6cdee1fb4534db836ff7765c35afe7b1eef7b14d516049d9d86d8",
+          "hostSourceHash": "92cee3fdeed6cdee1fb4534db836ff7765c35afe7b1eef7b14d516049d9d86d8"
+        }
+      ],
+      "repoDigests": [
+        "rtdwh-flink@sha256:a48b7392b035a2ab1aa0cb0c015e6a441d81d857a2517505d079c47859428946"
+      ]
+    },
+    {
+      "name": "/rtdwh-mysql",
+      "imageId": "sha256:7dcddc01f13bab2f15cde676d44d01f61fc9f99fe7785e86196dfc07d358ae2b",
+      "imageTag": "mysql:8.0",
+      "state": "running",
+      "mounts": [],
+      "repoDigests": [
+        "mysql@sha256:7dcddc01f13bab2f15cde676d44d01f61fc9f99fe7785e86196dfc07d358ae2b"
+      ]
+    },
+    {
+      "name": "/rtdwh-nginx",
+      "imageId": "sha256:64e1747da3ed8724456d7a799f5dcfc8b504af93f7eab09c8c1435f12c9866a9",
+      "imageTag": "deploy-rtdwh-nginx",
+      "state": "running",
+      "mounts": [],
+      "repoDigests": [
+        "deploy-rtdwh-nginx@sha256:64e1747da3ed8724456d7a799f5dcfc8b504af93f7eab09c8c1435f12c9866a9"
+      ]
+    },
+    {
+      "name": "/rtdwh-postgresql",
+      "imageId": "sha256:4689940c683801b4ab839ab3b0a0a3555a5fe425371422310944e89eca7d8068",
+      "imageTag": "postgres:13",
+      "state": "running",
+      "mounts": [],
+      "repoDigests": [
+        "postgres@sha256:4689940c683801b4ab839ab3b0a0a3555a5fe425371422310944e89eca7d8068"
+      ]
+    }
+  ],
+  "connectors": [
+    "9ad70ad9004de847df17c5bd8cd417ad02a4123dd9928d963881c5713a180356  /opt/flink/lib/flink-sql-connector-mysql-cdc-3.6.0-2.2.jar",
+    "8118c366e84bdb411e60a012284320a2bc347cc2906313e420205c66b224935f  /opt/flink/lib/flink-sql-connector-postgres-cdc-3.6.0-2.2.jar",
+    "bf344b7c619dcce3fcae8b5cfd5130dd3a9592ce232057d6ce7363111a987d76  /opt/flink/lib/paimon-flink-2.2-2.0.0.jar",
+    "d77962877d010777cff997015da90ee689f0f4bb76848340e1488f2b83332af5  /opt/flink/lib/mysql-connector-j-8.4.0.jar"
+  ],
+  "databaseCounts": {
+    "migrationVersion": 28,
+    "tasks": 2,
+    "assets": 2,
+    "qualityRules": 0,
+    "dataServices": 0
+  },
+  "health": {
+    "samples": 20,
+    "concurrency": 1,
+    "medianMs": 1.475,
+    "p95Ms": 1.84,
+    "maxMs": 12.01
+  },
+  "frontend": {
+    "samples": 20,
+    "concurrency": 1,
+    "medianMs": 0.545,
+    "p95Ms": 0.76,
+    "maxMs": 2.76
+  }
+}

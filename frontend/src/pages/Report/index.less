@@ -1,0 +1,185 @@
+.report-page {
+  .report-dashboard-note {
+    display: flex;
+    min-height: 54px;
+    margin-bottom: 16px;
+    padding: 10px 14px;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    border: 1px solid #d6e4ff;
+    border-radius: 8px;
+    background: #f0f5ff;
+    color: #475467;
+    font-size: 12px;
+
+    > div { display: flex; min-width: 0; flex-direction: column; gap: 2px; }
+    strong { color: #1d39c4; font-size: 14px; }
+    > span { flex: 0 0 auto; color: #667085; }
+  }
+
+  .report-metric-row { margin-bottom: 16px; }
+
+  .report-metric-card {
+    height: 100%;
+    .ant-card-body { display: flex; min-height: 104px; padding: 16px 18px; align-items: center; }
+  }
+
+  .report-metric-icon {
+    display: inline-flex;
+    width: 42px;
+    height: 42px;
+    margin-right: 14px;
+    flex: 0 0 42px;
+    align-items: center;
+    justify-content: center;
+    border-radius: 8px;
+    font-size: 20px;
+  }
+
+  .report-dashboard-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+
+  .report-visual-card {
+    min-width: 0;
+    overflow: hidden;
+    .ant-card-head { padding-inline: 16px; }
+    .ant-card-body { padding: 0; }
+  }
+
+  .report-card-title {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    gap: 8px;
+    > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  }
+
+  .report-visual-body {
+    display: flex;
+    min-height: 314px;
+    padding: 16px;
+    align-items: center;
+    justify-content: center;
+    > .ant-skeleton,
+    > .ant-alert,
+    > .ant-table-wrapper,
+    > .report-chart-wrap,
+    > .report-pie-layout { width: 100%; }
+  }
+
+  .report-card-footer {
+    display: flex;
+    min-height: 38px;
+    padding: 8px 16px;
+    align-items: center;
+    gap: 16px;
+    border-top: 1px solid #f0f0f0;
+    color: #8c8c8c;
+    font-size: 12px;
+    span:last-child { margin-left: auto; }
+  }
+
+  .report-cartesian-chart { display: block; width: 100%; height: auto; overflow: visible; }
+  .report-grid-line { stroke: #eaecf0; stroke-dasharray: 3 3; stroke-width: 1; }
+  .report-axis-label { fill: #8c8c8c; font-size: 11px; }
+
+  .report-chart-legend {
+    display: flex;
+    margin-top: 4px;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    color: #667085;
+    font-size: 12px;
+  }
+
+  .report-chart-legend-item {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    gap: 6px;
+    i { width: 8px; height: 8px; flex: 0 0 8px; border-radius: 50%; }
+  }
+
+  .report-pie-layout { display: grid; grid-template-columns: minmax(180px, 0.8fr) minmax(180px, 1.2fr); align-items: center; gap: 12px; }
+  .report-pie { display: block; width: 100%; max-height: 250px; }
+  .report-pie-total { fill: #1f2937; font-size: 20px; font-weight: 700; }
+  .report-pie-caption { fill: #8c8c8c; font-size: 12px; }
+
+  .report-chart-legend-vertical {
+    display: grid;
+    margin: 0;
+    justify-content: stretch;
+    gap: 9px;
+    .report-chart-legend-item {
+      display: grid;
+      grid-template-columns: 8px minmax(0, 1fr) auto;
+      span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      strong { color: #344054; font-weight: 600; }
+    }
+  }
+
+  .report-empty-card .ant-card-body { display: grid; min-height: 360px; place-items: center; }
+  .report-more-tip { margin-top: 16px; color: #667085; text-align: center; font-size: 12px; }
+
+  .report-list-toolbar { display: flex; margin-bottom: 16px; flex-wrap: wrap; align-items: center; gap: 10px; }
+  .report-list-search { width: 300px; }
+  .report-list-filter { width: 140px; }
+  .report-list-count { margin-left: auto; color: #8c8c8c; font-size: 12px; }
+
+  .report-name-cell {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    gap: 2px;
+    strong { overflow: hidden; color: #1f2937; text-overflow: ellipsis; white-space: nowrap; }
+    span { color: #98a2b3; font-size: 11px; }
+  }
+
+}
+
+/* Ant Design modals are rendered in a portal outside .report-page. */
+.report-editor-modal {
+  .report-editor-tip {
+    margin-bottom: 18px;
+    border-color: #91caff;
+    background: #e6f4ff !important;
+
+    .ant-alert-message { color: #0958d9; }
+    .ant-alert-description { color: #475467; }
+  }
+
+  .report-sql-editor {
+    padding: 12px 14px;
+    border-color: #344054 !important;
+    background: #101828 !important;
+    color: #f2f4f7 !important;
+    font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+    font-size: 13px;
+    line-height: 1.65;
+    &::placeholder { color: #667085 !important; }
+  }
+}
+
+.report-detail-modal {
+  .report-detail-meta { display: flex; margin-bottom: 16px; align-items: center; gap: 12px; color: #667085; font-size: 12px; }
+  .report-detail-sql { margin: 18px 0 0 !important; padding-top: 14px; border-top: 1px solid #f0f0f0; }
+}
+
+@media (max-width: 1100px) {
+  .report-page .report-dashboard-grid { grid-template-columns: minmax(0, 1fr); }
+}
+
+@media (max-width: 640px) {
+  .report-page {
+    .report-dashboard-note { align-items: flex-start; flex-direction: column; gap: 8px; }
+    .report-list-search,
+    .report-list-filter { width: 100%; }
+    .report-list-count { width: 100%; margin-left: 0; }
+    .report-pie-layout { grid-template-columns: 1fr; }
+    .report-card-footer {
+      gap: 8px;
+      span:last-child { display: none; }
+    }
+  }
+}

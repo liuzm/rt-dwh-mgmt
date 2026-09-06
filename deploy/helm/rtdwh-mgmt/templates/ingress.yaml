@@ -1,23 +1,27 @@
-{{- if .Values.frontend.enabled }}
+{{- if .Values.ingress.enabled }}
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: {{ include "rtdwh-mgmt.fullname" . }}-ingress
+  labels:
+    {{- include "rtdwh-mgmt.labels" . | nindent 4 }}
+  {{- with .Values.ingress.annotations }}
   annotations:
-    nginx.ingress.kubernetes.io/proxy-read-timeout: "300"
-    nginx.ingress.kubernetes.io/proxy-connect-timeout: "300"
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
 spec:
+  {{- with .Values.ingress.className }}
+  ingressClassName: {{ . }}
+  {{- end }}
+  {{- with .Values.ingress.tls }}
+  tls:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
   rules:
-    - host: {{ .Values.ingress.host | default "rtdwh.local" }}
+    - host: {{ .Values.ingress.host | quote }}
       http:
         paths:
-          - path: /api/v1
-            pathType: Prefix
-            backend:
-              service:
-                name: {{ include "rtdwh-mgmt.fullname" . }}-backend
-                port:
-                  number: {{ .Values.backend.service.port }}
+          {{- if .Values.frontend.enabled }}
           - path: /
             pathType: Prefix
             backend:
@@ -25,4 +29,13 @@ spec:
                 name: {{ include "rtdwh-mgmt.fullname" . }}-frontend
                 port:
                   number: {{ .Values.frontend.service.port }}
+          {{- else }}
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "rtdwh-mgmt.fullname" . }}-backend
+                port:
+                  number: {{ .Values.backend.service.port }}
+          {{- end }}
 {{- end }}
